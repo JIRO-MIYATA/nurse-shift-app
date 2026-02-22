@@ -1,0 +1,1522 @@
+
+import React, { useState, useMemo, useCallback, useEffect } from "react";
+
+// ==========================================
+// Constants & Types
+// ==========================================
+
+const T_DAY_WEEK = 11;
+const T_DAY_HOL = 7;
+const T_NIGHT = 4;
+const MIN_NIGHTS = 2;
+const EXTRA_OFF = 5;
+const MAX_CONSECUTIVE_WORK = 5; // Max 5 days work, 6th must be OFF
+
+// Fixed Holidays (MM/DD)
+const HOLIDAYS = [
+    "01/01", "01/02", "01/03", "02/11", "02/23", "03/20", "03/21", "04/29",
+    "05/03", "05/04", "05/05", "07/15", "07/21", "08/11", "09/15", "09/23",
+    "10/14", "11/03", "11/23", "12/23"
+];
+
+const SHIFT_TYPES = {
+    DAY: { label: "日", en: "Day", color: "#3B82F6" },   // Blue
+    START: { label: "準", en: "Semi", color: "#F97316" }, // Orange
+    DEEP: { label: "深", en: "Deep", color: "#A855F7" },  // Purple
+    OFF: { label: "休", en: "Off", color: "#64748B" }     // Gray
+};
+
+// styles
+const styles = {
+    container: {
+        fontFamily: "Inter, system-ui, sans-serif",
+        backgroundColor: "#080C12",
+        color: "#E2E8F0",
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+    },
+    header: {
+        position: "sticky",
+        top: 0,
+        zIndex: 50,
+        backgroundColor: "#0F172A",
+        borderBottom: "1px solid #1E293B",
+        padding: "0.75rem 1rem",
+        display: "flex",
+        justifyContent: "space-between",
+        alignItems: "center",
+        boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.5)",
+    },
+    title: {
+        fontSize: "1.25rem",
+        fontWeight: "bold",
+        color: "#38BDF8",
+        display: "flex",
+        alignItems: "center",
+        gap: "0.5rem",
+    },
+    navButton: {
+        background: "transparent",
+        border: "1px solid #334155",
+        color: "#CBD5E1",
+        padding: "0.25rem 0.75rem",
+        borderRadius: "0.25rem",
+        cursor: "pointer",
+        margin: "0 0.5rem",
+    },
+    actionButton: {
+        backgroundColor: "#334155",
+        color: "#F1F5F9",
+        border: "none",
+        padding: "0.5rem 1rem",
+        borderRadius: "0.375rem",
+        cursor: "pointer",
+        fontWeight: 500,
+        marginLeft: "0.5rem",
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "0.25rem",
+    },
+    primaryButton: {
+        backgroundColor: "#0EA5E9",
+        color: "#FFFFFF",
+    },
+    dangerButton: {
+        backgroundColor: "#EF4444",
+        color: "#FFFFFF",
+    },
+    persistButton: {
+        color: "#FFFFFF",
+        border: "none",
+        padding: "0.5rem 0",
+        borderRadius: "0.375rem",
+        cursor: "pointer",
+        fontWeight: 500,
+        display: "inline-flex",
+        alignItems: "center",
+        justifyContent: "center",
+        width: "110px", // Fixed width for uniformity
+        fontSize: "0.85rem",
+    },
+    tableWrapper: {
+        flex: 1,
+        overflow: "auto",
+        position: "relative",
+    },
+
+    table: {
+        borderCollapse: "collapse",
+        width: "100%",
+        fontSize: "0.80rem",
+    },
+    th: {
+        backgroundColor: "#1E293B",
+        color: "#94A3B8",
+        padding: "0.3rem",
+        textAlign: "center",
+        border: "1px solid #334155",
+        whiteSpace: "nowrap",
+        fontWeight: 600,
+    },
+    td: {
+        border: "1px solid #334155",
+        textAlign: "center",
+        padding: "0",
+        height: "2.0rem",
+        minWidth: "2.0rem",
+        cursor: "pointer",
+        transition: "background-color 0.1s",
+    },
+    stickyCol: {
+        position: "sticky",
+        backgroundColor: "#0F172A",
+        zIndex: 10,
+        left: 0,
+    },
+    shiftCell: {
+        width: "100%",
+        height: "100%",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        fontWeight: 600,
+        boxSizing: "border-box", // Ensure borders don't expand size
+    },
+    modalOverlay: {
+        position: "fixed",
+        top: 0,
+        left: 0,
+        right: 0,
+        bottom: 0,
+        backgroundColor: "rgba(0, 0, 0, 0.7)",
+        display: "flex",
+        justifyContent: "center",
+        alignItems: "center",
+        zIndex: 100,
+    },
+    modalContent: {
+        backgroundColor: "#1E293B",
+        padding: "1.5rem",
+        borderRadius: "0.5rem",
+        maxWidth: "90vw",
+        maxHeight: "90vh",
+        overflow: "auto",
+        border: "1px solid #334155",
+    },
+    badge: {
+        display: "inline-block",
+        padding: "0.1rem 0.3rem",
+        borderRadius: "0.2rem",
+        fontSize: "0.7rem",
+        marginRight: "0.2rem",
+        backgroundColor: "#475569",
+        color: "#fff",
+    },
+    legendBar: {
+        display: "flex",
+        gap: "1rem",
+        backgroundColor: "#0F172A",
+        padding: "0.5rem 1rem",
+        borderBottom: "1px solid #1E293B",
+        fontSize: "0.8rem",
+        color: "#94A3B8",
+        flexWrap: "wrap",
+    },
+};
+
+// Helper: Get days in month
+const getDaysInMonth = (year, month) => new Date(year, month, 0).getDate();
+
+// Helper: Check if specific date is holiday (including weekends)
+const checkIsHoliday = (year, month, day) => {
+    const date = new Date(year, month - 1, day);
+    const dayOfWeek = date.getDay();
+    const formatted = `${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}`;
+
+    if (dayOfWeek === 0) return true; // Sun only
+    if (HOLIDAYS.includes(formatted)) return true;
+    return false;
+};
+
+// Helper: Generate default staff
+const generateDefaultStaff = () => {
+    const staff = [];
+    for (let i = 1; i <= 30; i++) {
+        let team = "A";
+        if (i > 10) team = "B";
+        if (i > 20) team = "C";
+
+        let rookie = false;
+        let w4 = false;
+        let sunOff = false;
+        let fixNights = null;
+        let isLeader = false; // Add Leader attribute
+        let name = `スタッフ ${i}`;
+
+        if (i === 1) { w4 = true; sunOff = true; fixNights = 2; name += " (Manager)"; }
+        else if (i === 11) { w4 = true; fixNights = 2; }
+
+        if ([9, 10, 19, 20, 29, 30].includes(i)) rookie = true;
+
+        // Smart Leader Default: Non-rookie = Leader
+        isLeader = !rookie;
+        // Specific Overrides for demo if needed, but user requested default rule.
+        // We can still manually set specific people if we want, but "Default" rule is requested.
+
+        staff.push({ id: i, name, team, rookie, w4, sunOff, fixNights, isLeader });
+    }
+    return staff;
+};
+
+export default function NurseShiftApp() {
+    const [currentDate, setCurrentDate] = useState(new Date());
+    const [staffData, setStaffData] = useState(generateDefaultStaff());
+    const [schedule, setSchedule] = useState([]); // staffIndex -> dayIndex -> ShiftKey
+    const [requests, setRequests] = useState({}); // { sIdx: { dIdx: "OFF"|"DAY" } }
+    const [prevMonthSchedule, setPrevMonthSchedule] = useState([]); // [sIdx][last10days]
+    const [isPrevMonthLinked, setIsPrevMonthLinked] = useState(false);
+    const [leaderFlags, setLeaderFlags] = useState(new Set()); // "sIdx-dIdx"
+    const [filterTeam, setFilterTeam] = useState("ALL");
+
+    // Modals
+    const [showStaffModal, setShowStaffModal] = useState(false);
+    const [showRequestModal, setShowRequestModal] = useState(false);
+    const [showPrevMonthModal, setShowPrevMonthModal] = useState(false);
+    const [monthlyCache, setMonthlyCache] = useState({}); // "YYYY-MM" -> { requests, prevMonthSchedule, leaderFlags, schedule }
+    const [editCell, setEditCell] = useState(null);
+
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth() + 1;
+    const daysInMonth = getDaysInMonth(year, month);
+    const daysArray = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+
+    // Initialize schedule
+    useEffect(() => {
+        // 1. Restore Current Month Data if exists (handled in changeMonth/initial load?)
+        // Actually, this useEffect runs on year/month change.
+        // We need to check if current month is in cache (already done in changeMonth?)
+        // But initial load needs this.
+
+        // Standard Init for new month (or reload if not in cache)
+        const key = `${year}-${month}`;
+        if (monthlyCache[key]) {
+            // Already handled by changeMonth for switching.
+            // But for initial load?
+            // Let's rely on the logic below to handle "Prev Month" linking specifically.
+        } else {
+            const newSchedule = staffData.map(() => Array(daysInMonth).fill("DAY"));
+            setSchedule(newSchedule);
+            setLeaderFlags(new Set());
+            setRequests({});
+        }
+
+        // 2. Link Previous Month Data
+        const prevDate = new Date(year, month - 2, 1); // Month is 0-indexed in Date
+        const prevKey = `${prevDate.getFullYear()}-${prevDate.getMonth() + 1}`;
+        const prevData = monthlyCache[prevKey];
+
+        if (prevData && prevData.schedule) {
+            // Auto-link
+            const daysInPrev = getDaysInMonth(prevDate.getFullYear(), prevDate.getMonth() + 1);
+            const last10 = staffData.map((_, sIdx) => {
+                // If staff count mismatches, this might be risky. Assuming staff consistency or index match.
+                // ideally match by ID, but for now index.
+                const pSched = prevData.schedule[sIdx] || Array(daysInPrev).fill("OFF");
+                // Get last 10 days
+                return pSched.slice(daysInPrev - 10, daysInPrev);
+            });
+            setPrevMonthSchedule(last10);
+            setIsPrevMonthLinked(true);
+        } else {
+            // No prev data -> Manual Mode
+            // Check if we already have manual input for THIS month in cache?
+            // If we are loading THIS month from cache, prevMonthSchedule is already set.
+            if (!monthlyCache[key]) {
+                // Default to 10 days OFF
+                setPrevMonthSchedule(staffData.map(() => Array(10).fill("OFF")));
+                setIsPrevMonthLinked(false);
+            } else {
+                // If loaded from cache, isPrevMonthLinked state might need restoring?
+                // For simplicity, if prevKey exists, we assume linked. If not, manual.
+                setIsPrevMonthLinked(false);
+            }
+        }
+
+    }, [year, month, staffData.length]); // Note: monthlyCache dependency might cause loops if not careful.
+
+    // ==========================================
+    // Logic: Schedule Generation
+    // ==========================================
+    const generateSchedule = useCallback(() => {
+        // Clone current structure
+        const newSched = staffData.map(() => Array(daysInMonth).fill("DAY"));
+        const lockedCoods = new Set(); // "sIdx-dIdx"
+
+        // Reset Dynamic Leaders on fresh generation
+        setLeaderFlags(new Set());
+
+        const lock = (sIdx, dIdx, shift) => {
+            if (dIdx >= 0 && dIdx < daysInMonth) {
+                newSched[sIdx][dIdx] = shift;
+                lockedCoods.add(`${sIdx}-${dIdx}`);
+            }
+        };
+        const isLocked = (sIdx, dIdx) => lockedCoods.has(`${sIdx}-${dIdx}`);
+
+        // Helper for randomness
+        const shuffle = (array) => array.sort(() => Math.random() - 0.5);
+
+        // [PHASE 0] Pre-constraints
+        staffData.forEach((s, sIdx) => {
+            // Requests
+            if (requests[sIdx]) {
+                Object.entries(requests[sIdx]).forEach(([d, type]) => {
+                    lock(sIdx, parseInt(d), type);
+                });
+            }
+            // Sunday Off
+            if (s.sunOff) {
+                daysArray.forEach((d, dIdx) => {
+                    const date = new Date(year, month - 1, d);
+                    if (date.getDay() === 0) lock(sIdx, dIdx, "OFF");
+                });
+            }
+
+            // [NEW] Prev Month Constraints (Semi -> Deep, Deep -> Off)
+            // Robust Lookup: Check monthlyCache direct first, then prevMonthSchedule state
+            let lastDay = null;
+
+            // 1. Try Cache Direct (Source of Truth)
+            const prevDateGen = new Date(year, month - 2, 1);
+            const prevKeyGen = `${prevDateGen.getFullYear()}-${prevDateGen.getMonth() + 1}`;
+            const cachePrev = monthlyCache[prevKeyGen];
+
+            if (cachePrev && cachePrev.schedule && cachePrev.schedule[sIdx]) {
+                const pSched = cachePrev.schedule[sIdx];
+                if (pSched.length > 0) {
+                    lastDay = pSched[pSched.length - 1];
+                }
+            }
+
+            // 2. Fallback to state (Manual Mode or Cache miss)
+            if (!lastDay) {
+                const prev = prevMonthSchedule[sIdx];
+                if (prev && prev.length > 0) {
+                    lastDay = prev[prev.length - 1];
+                }
+            }
+
+            if (lastDay === "START") {
+                // Semi-Night last day -> Must be Deep-Night day 1
+                lock(sIdx, 0, "DEEP");
+                // Usually Deep -> Off next
+                lock(sIdx, 1, "OFF");
+            } else if (lastDay === "DEEP") {
+                // Deep-Night last day -> Must be Off day 1
+                lock(sIdx, 0, "OFF");
+            }
+        });
+
+        // Track Night Counts for Equalization
+        // Initialize with fixed nights handled in Phase 2? No, we need to track dynamically.
+        // For simplicity, just count assigned START shifts in this generation.
+        // Since we generate sequentially day 1->31, previous days are fixed.
+        const currentNightCounts = new Array(staffData.length).fill(0);
+
+        // [PHASE 1] Night Shifts (Semi=4, then Deep->Off)
+        for (let dIdx = 0; dIdx < daysInMonth; dIdx++) {
+            const candidates = [];
+
+            staffData.forEach((s, sIdx) => {
+                // Check current day lock
+                if (isLocked(sIdx, dIdx)) return;
+
+                // Check next day lock (Next day must be free for DEEP)
+                // If dIdx is last day, next day is next month (assumed free for now, will be handled by next month generation)
+                if (dIdx < daysInMonth - 1 && isLocked(sIdx, dIdx + 1)) return;
+
+                // Check day after next lock (Next-Next day must be free for OFF)
+                // If dIdx >= daysInMonth - 2, we assume free
+                if (dIdx < daysInMonth - 2 && isLocked(sIdx, dIdx + 2)) return;
+
+                candidates.push(sIdx);
+            });
+
+            // Select 4 people
+            const teams = ["A", "B", "C"];
+
+            // Retry logic for this day
+            let validSelection = false;
+            let attempt = 0;
+
+            while (!validSelection && attempt < 100) {
+                attempt++;
+                const currentSelection = [];
+
+                // Weighted Random Sort: Night Count + Random Noise
+                // This allows 'almost equal' counts to swap, preventing stuck retries on invalid combinations
+                const pool = [...candidates].sort((a, b) => {
+                    const weightA = currentNightCounts[a] + Math.random() * 2.5;
+                    const weightB = currentNightCounts[b] + Math.random() * 2.5;
+                    return weightA - weightB;
+                });
+
+                // Helper to pick
+                const pick = (pIdx) => {
+                    currentSelection.push(pool[pIdx]);
+                    pool.splice(pIdx, 1);
+                };
+
+                // 1. Pick 1 from A, B, C (Try to pick regardless of count, but pool is sorted)
+                for (const t of teams) {
+                    const idx = pool.findIndex(pid => staffData[pid].team === t);
+                    if (idx !== -1) pick(idx);
+                }
+
+                // 2. Fill until 4
+                while (currentSelection.length < T_NIGHT && pool.length > 0) {
+                    pick(0);
+                }
+
+                if (currentSelection.length === T_NIGHT) {
+                    // Check Rookie Constraint (Max 1 rookie)
+                    const rookies = currentSelection.filter(pid => staffData[pid].rookie).length;
+                    // Check Leader Constraint (Min 1 leader)
+                    const leaders = currentSelection.filter(pid => staffData[pid].isLeader).length;
+
+                    if (rookies <= 1 && leaders >= 1) {
+                        validSelection = true;
+                        // Apply
+                        currentSelection.forEach(pid => {
+                            lock(pid, dIdx, "START");
+                            if (dIdx + 1 < daysInMonth) lock(pid, dIdx + 1, "DEEP");
+                            if (dIdx + 2 < daysInMonth) lock(pid, dIdx + 2, "OFF");
+                            currentNightCounts[pid]++;
+                        });
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // [PHASE 2] Night Count Adjustment
+        staffData.forEach((s, sIdx) => {
+            let nightCount = 0;
+            const nightDays = [];
+            for (let d = 0; d < daysInMonth; d++) {
+                if (newSched[sIdx][d] === "START") {
+                    nightCount++;
+                    nightDays.push(d);
+                }
+            }
+
+            // Target (if fixed)
+            let target = s.fixNights !== null ? s.fixNights : MIN_NIGHTS;
+
+            // If fixed and too many, remove from end
+            if (s.fixNights !== null && nightCount > target) {
+                for (let i = nightCount - 1; i >= target; i--) {
+                    const d = nightDays[i];
+
+                    // Only unlock if not set by Prev Month Logic (d=0 shouldn't happen for START if prev was Semi... wait.
+                    // If prev was Semi, Day 0 is DEEP.
+                    // If Phase 1 assigned START at Day 0, it means prev wasn't Semi.
+                    // So we can remove logic safely?
+                    // Actually, if we remove START at `d`, we must assume `d+1` becomes DAY too?
+                    // Phase 2 removes extra nights.
+
+                    newSched[sIdx][d] = "DAY";
+                    // If we remove START at 'd', we must also remove the paired DEEP at 'd+1'
+                    if (d + 1 < daysInMonth && newSched[sIdx][d + 1] === "DEEP") {
+                        newSched[sIdx][d + 1] = "DAY";
+                        lockedCoods.delete(`${sIdx}-${d + 1}`);
+                    }
+                    // Requests are locked. isLocked would prevent Phase 1 from overwriting request.
+                    // But here we are reverting Phase 1 decisions.
+                    // Phase 1 sets locks. We can remove them.
+
+                    lockedCoods.delete(`${sIdx}-${d}`);
+                    lockedCoods.delete(`${sIdx}-${d + 1}`);
+                }
+            }
+        });
+
+        // [PHASE 3] W4 Staff Extra Off
+        staffData.forEach((s, sIdx) => {
+            if (s.w4) {
+                let addedOffs = 0;
+                const availableDays = daysArray.map((_, i) => i).filter(d => newSched[sIdx][d] === "DAY" && !isLocked(sIdx, d));
+                const shuffled = shuffle(availableDays);
+
+                for (const d of shuffled) {
+                    if (addedOffs >= EXTRA_OFF) break;
+                    lock(sIdx, d, "OFF");
+                    addedOffs++;
+                }
+            }
+        });
+
+        // [PHASE 4] Day Limit Enforcing
+        for (let dIdx = 0; dIdx < daysInMonth; dIdx++) {
+            const isHoli = checkIsHoliday(year, month, dIdx + 1);
+            const maxDay = isHoli ? T_DAY_HOL : T_DAY_WEEK;
+
+            const dayStaff = staffData.map((_, sIdx) => sIdx).filter(sIdx => newSched[sIdx][dIdx] === "DAY");
+
+            if (dayStaff.length > maxDay) {
+                const candidates = dayStaff.filter(sIdx => !isLocked(sIdx, dIdx));
+                const toRemoveCount = dayStaff.length - maxDay;
+
+                // Equalization: Remove from those with MOST days currently assigned
+                // NEW: Prioritize sorting by TOTAL WORK DAYS (fewest holidays)
+                const sorted = candidates.sort((a, b) => {
+                    // Count NOT OFF = Work Days
+                    const countA = newSched[a].filter(s => s !== "OFF").length;
+                    const countB = newSched[b].filter(s => s !== "OFF").length;
+                    const weightA = countA + Math.random();
+                    const weightB = countB + Math.random();
+                    return weightB - weightA; // Descending: Person with MOST work days gets removed first
+                });
+
+                let removed = 0;
+                let cIdx = 0;
+                while (removed < toRemoveCount && cIdx < sorted.length) {
+                    const targetIdx = sorted[cIdx];
+                    cIdx++;
+
+                    // Check Leader Constraint
+                    if (staffData[targetIdx].isLeader) {
+                        const currentDayLeaders = dayStaff.filter(sIdx => newSched[sIdx][dIdx] === "DAY" && staffData[sIdx].isLeader).length;
+                        if (currentDayLeaders <= 1) {
+                            continue;
+                        }
+                    }
+
+                    lock(targetIdx, dIdx, "OFF");
+                    removed++;
+                }
+            }
+        }
+
+        // [PHASE 5] Consecutive Work Limit (Max 5 days) using Prev Month
+        staffData.forEach((s, sIdx) => {
+            let consecutive = 0;
+
+            // 1. Init from Pre Month
+            const prev = prevMonthSchedule[sIdx];
+            if (prev) {
+                // Check last 5 days of prev month to see consecutive count?
+                // Actually need to count backwards from last day (index 9)
+                for (let i = 9; i >= 0; i--) {
+                    if (prev[i] === "OFF") break;
+                    consecutive++;
+                }
+            }
+
+            for (let d = 0; d < daysInMonth; d++) {
+                if (newSched[sIdx][d] === "OFF") {
+                    consecutive = 0;
+                } else {
+                    consecutive++;
+                    if (consecutive > MAX_CONSECUTIVE_WORK) {
+                        // Try to remove current day
+                        if (newSched[sIdx][d] === "DAY" && !isLocked(sIdx, d)) {
+                            lock(sIdx, d, "OFF");
+                            consecutive = 0;
+                        }
+                        // If current day is locked (e.g. Night Shift), try to remove PREVIOUS day
+                        else if (d > 0 && newSched[sIdx][d - 1] === "DAY" && !isLocked(sIdx, d - 1)) {
+                            lock(sIdx, d - 1, "OFF");
+                            // Since d-1 is now OFF, consecutive count at d becomes 1
+                            consecutive = 1;
+                        } else {
+                            // Conflict: Cannot resolve consecutive limit due to locks.
+                            // e.g., Worked 5 days prev, then Deep Night (Locked).
+                            // Leave as is (Will show warning in validation).
+                        }
+                    }
+                }
+            }
+        });
+
+        setSchedule(newSched);
+
+    }, [staffData, requests, daysInMonth, year, month, prevMonthSchedule, monthlyCache]); // Added monthlyCache
+
+    // ==========================================
+    // Warnings & Validation
+    // ==========================================
+    const validation = useMemo(() => {
+        const v = { cellWarnings: {}, colWarnings: {}, requestFailures: {}, consecutiveWarnings: {} };
+
+        // 1. Daily Column Validation
+        for (let d = 0; d < daysInMonth; d++) {
+            const isHoli = checkIsHoliday(year, month, d + 1);
+            const limitDay = isHoli ? T_DAY_HOL : T_DAY_WEEK;
+
+            let cDay = 0, cStart = 0, cDeep = 0;
+            let rookiesStart = 0, rookiesDeep = 0;
+            let leadersDay = 0, leadersStart = 0, leadersDeep = 0;
+
+            staffData.forEach((s, sIdx) => {
+                const shift = schedule[sIdx]?.[d];
+                const isLeader = leaderFlags.has(`${sIdx}-${d}`);
+
+                if (shift === "DAY") { cDay++; if (isLeader) leadersDay++; }
+                if (shift === "START") { cStart++; if (s.rookie) rookiesStart++; if (isLeader) leadersStart++; }
+                if (shift === "DEEP") { cDeep++; if (s.rookie) rookiesDeep++; if (isLeader) leadersDeep++; }
+
+                // Request Check
+                const reqType = requests[sIdx]?.[d];
+                if (reqType) {
+                    if (reqType === "OFF" && shift !== "OFF") {
+                        v.requestFailures[`${sIdx}-${d}`] = true;
+                        v.cellWarnings[`${sIdx}-${d}`] = true;
+                    }
+                    if (reqType === "DAY" && shift !== "DAY") {
+                        v.requestFailures[`${sIdx}-${d}`] = true;
+                        v.cellWarnings[`${sIdx}-${d}`] = true;
+                    }
+                }
+            });
+
+            // Col Warnings
+            // DAY
+            if (cDay > limitDay) v.colWarnings[`${d}-DAY`] = "red";
+            else if (cDay < limitDay - 2) v.colWarnings[`${d}-DAY`] = "orange";
+            else v.colWarnings[`${d}-DAY`] = "#10B981";
+
+            // START
+            if (cStart !== T_NIGHT) v.colWarnings[`${d}-START`] = "red";
+            else if (rookiesStart >= 2) v.colWarnings[`${d}-START`] = "orange";
+            else if (leadersStart === 0) v.colWarnings[`${d}-START`] = "magenta"; // No Leader
+            else v.colWarnings[`${d}-START`] = "#10B981";
+
+            // DEEP
+            if (cDeep !== T_NIGHT) v.colWarnings[`${d}-DEEP`] = "red";
+            else if (rookiesDeep >= 2) v.colWarnings[`${d}-DEEP`] = "orange";
+            else if (leadersDeep === 0) v.colWarnings[`${d}-DEEP`] = "magenta"; // No Leader
+            else v.colWarnings[`${d}-DEEP`] = "#10B981";
+
+            // Rookie overlap warning cells
+            if (rookiesStart >= 2) {
+                staffData.forEach((s, sIdx) => {
+                    if (schedule[sIdx]?.[d] === "START" && s.rookie) v.cellWarnings[`${sIdx}-${d}`] = true;
+                });
+            }
+            if (rookiesDeep >= 2) {
+                staffData.forEach((s, sIdx) => {
+                    if (schedule[sIdx]?.[d] === "DEEP" && s.rookie) v.cellWarnings[`${sIdx}-${d}`] = true;
+                });
+            }
+        }
+
+        // 2. Consecutive Work Validation
+        staffData.forEach((s, sIdx) => {
+            let consecutive = 0;
+            for (let d = 0; d < daysInMonth; d++) {
+                if (schedule[sIdx]?.[d] === "OFF") {
+                    consecutive = 0;
+                } else {
+                    consecutive++;
+                    if (consecutive > MAX_CONSECUTIVE_WORK) {
+                        v.cellWarnings[`${sIdx}-${d}`] = true;
+                        v.consecutiveWarnings[sIdx] = true;
+                    }
+                }
+            }
+        });
+
+        return v;
+    }, [schedule, daysInMonth, staffData, requests, year, month, leaderFlags]);
+
+    // ==========================================
+    // Handlers
+    // ==========================================
+    const handleCSVExport = () => {
+        let csv = "\uFEFF";
+        csv += "No,Name,Team,Attr,";
+        csv += daysArray.map(d => d).join(",") + ",DayTotal,SemiTotal,DeepTotal,OffTotal\n";
+
+        staffData.forEach((s, sIdx) => {
+            const row = [s.id, s.name, s.team];
+            const attr = [];
+            if (s.w4) attr.push("W4");
+            if (s.rookie) attr.push("Beginner");
+            if (s.sunOff) attr.push("SunOff");
+            row.push(attr.join(" "));
+
+            const shifts = schedule[sIdx] || [];
+            const counts = { DAY: 0, START: 0, DEEP: 0, OFF: 0 };
+
+            shifts.forEach((sh, dIdx) => {
+                let label = SHIFT_TYPES[sh]?.label || "";
+                if (leaderFlags.has(`${sIdx}-${dIdx}`)) label += "(L)";
+                row.push(label);
+                if (counts[sh] !== undefined) counts[sh]++;
+            });
+
+            row.push(counts.DAY, counts.START, counts.DEEP, counts.OFF);
+            csv += row.join(",") + "\n";
+        });
+
+        csv += ",,Totals,,";
+        ["DAY", "START", "DEEP", "OFF"].forEach(type => {
+            csv += `${SHIFT_TYPES[type].label} Total,,,,`;
+            const sums = daysArray.map((_, d) =>
+                staffData.filter((_, sIdx) => schedule[sIdx][d] === type).length
+            );
+            csv += sums.join(",") + "\n";
+        });
+
+        const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+        const link = document.createElement("a");
+        link.href = URL.createObjectURL(blob);
+        link.download = `shift_${year}_${month}.csv`;
+        link.click();
+    };
+
+
+
+    const changeMonth = (delta) => {
+        // 1. Save current state to cache
+        const currentKey = `${year}-${month}`;
+        const newCache = { ...monthlyCache };
+        newCache[currentKey] = {
+            requests: { ...requests },
+            prevMonthSchedule: [...prevMonthSchedule],
+            leaderFlags: new Set(leaderFlags),
+            schedule: [...schedule]
+        };
+        setMonthlyCache(newCache);
+
+        // 2. Change Date
+        const newDate = new Date(year, month - 1 + delta, 1);
+        setCurrentDate(newDate);
+    };
+
+    useEffect(() => {
+        const key = `${year}-${month}`;
+
+        // 1. Prepare Standard Data
+        let nextSchedule = staffData.map(() => Array(daysInMonth).fill("DAY"));
+        let nextLeaderFlags = new Set();
+        let nextRequests = {};
+
+        // Restore from cache if exists
+        if (monthlyCache[key]) {
+            const data = monthlyCache[key];
+            if (data.schedule) nextSchedule = data.schedule;
+            if (data.leaderFlags) nextLeaderFlags = data.leaderFlags;
+            if (data.requests) nextRequests = data.requests;
+        }
+
+        // 2. Link Previous Month Data (Priority Logic)
+        // Always check fresh Previous Month Data from cache
+        const prevDate = new Date(year, month - 2, 1);
+        const prevKey = `${prevDate.getFullYear()}-${prevDate.getMonth() + 1}`;
+        const prevData = monthlyCache[prevKey];
+
+        let nextPrevSchedule = staffData.map(() => Array(10).fill("OFF"));
+        let nextIsLinked = false;
+
+        if (prevData && prevData.schedule) {
+            // Found fresh previous data -> Auto Link
+            const daysInPrev = getDaysInMonth(prevDate.getFullYear(), prevDate.getMonth() + 1);
+            nextPrevSchedule = staffData.map((_, sIdx) => {
+                const pSched = prevData.schedule[sIdx] || Array(daysInPrev).fill("OFF");
+                return pSched.slice(daysInPrev - 10, daysInPrev);
+            });
+            nextIsLinked = true;
+        } else {
+            // No prev data -> Use manual cache if exists, else default
+            if (monthlyCache[key] && monthlyCache[key].prevMonthSchedule) {
+                nextPrevSchedule = monthlyCache[key].prevMonthSchedule;
+            }
+            nextIsLinked = false;
+        }
+
+        // 3. Apply State
+        setSchedule(nextSchedule);
+        setLeaderFlags(nextLeaderFlags);
+        setRequests(nextRequests);
+        setPrevMonthSchedule(nextPrevSchedule);
+        setIsPrevMonthLinked(nextIsLinked);
+
+    }, [year, month, staffData.length, monthlyCache]); // Included monthlyCache to ensure prev month data availability
+
+    // Constants & Helpers
+    // daysInMonth and daysArray are already defined above (lines ~234)
+
+    // ... (rest of logic: checkIsHoliday, generateSchedule, etc.)
+
+    // Export Data (JSON)
+    const exportData = () => {
+        const data = {
+            staffData,
+            requests, // Valid for current month
+            prevMonthSchedule,
+            leaderFlagsStr: Array.from(leaderFlags),
+            schedule,
+            monthlyCache // Optional: Save entire history? Might be too big. Let's save current month's setup mainly.
+            // User asked: "Save after registering staff info".
+            // If we save local state:
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `nurse_shift_data_${year}_${month}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    // Export Staff Data Only
+    const exportStaffData = () => {
+        const data = {
+            staffData
+        };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `nurse_staff_only_${year}_${month}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+    };
+
+    // Import Data (JSON)
+    const importData = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const data = JSON.parse(event.target.result);
+                if (data.staffData) setStaffData(data.staffData);
+                if (data.requests) setRequests(data.requests);
+                if (data.prevMonthSchedule) setPrevMonthSchedule(data.prevMonthSchedule);
+                if (data.schedule) setSchedule(data.schedule);
+                if (data.leaderFlagsStr) setLeaderFlags(new Set(data.leaderFlagsStr));
+                alert("データを読み込みました");
+            } catch (err) {
+                alert("ファイルの読み込みに失敗しました");
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    // Import Staff Data Only
+    const importStaffData = (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            try {
+                const data = JSON.parse(event.target.result);
+                if (!data.staffData) {
+                    alert("スタッフデータが見つかりませんでした");
+                    return;
+                }
+
+                const newStaff = data.staffData;
+                setStaffData(newStaff);
+
+                // Resize Helper
+                const resize = (arr, filler) => {
+                    if (arr.length < newStaff.length) {
+                        return [...arr, ...Array(newStaff.length - arr.length).fill(null).map(() => filler)];
+                    } else if (arr.length > newStaff.length) {
+                        return arr.slice(0, newStaff.length);
+                    }
+                    return arr;
+                };
+
+                // Resize dependent arrays to prevent crashes
+                setSchedule(prev => resize(prev, Array(daysInMonth).fill("DAY")));
+                setPrevMonthSchedule(prev => resize(prev, Array(10).fill("OFF")));
+
+                // Requests logic: 
+                // Since requests is an Object { sIdx: { dIdx: Type } }, we don't necessarily need to resize it, 
+                // but we should probably clean up high indices if staff reduced.
+                // However, object keys are just strings, so it won't crash. 
+                // We'll leave requests as is, or maybe filter? 
+                // Let's leave it. If sIdx 10 exists in requests but not in staffData, it just won't be accessed.
+
+                alert(`スタッフ条件を読み込みました (${newStaff.length}名)`);
+                e.target.value = ""; // Reset input
+            } catch (err) {
+                alert("ファイルの読み込みに失敗しました");
+            }
+        };
+        reader.readAsText(file);
+    };
+
+    const updateStaff = (index, field, val) => {
+        const newData = [...staffData];
+        newData[index] = { ...newData[index], [field]: val };
+        setStaffData(newData);
+    };
+    const addStaff = () => {
+        const newId = (staffData[staffData.length - 1]?.id || 0) + 1;
+        const counts = { A: 0, B: 0, C: 0 };
+        staffData.forEach(s => counts[s.team]++);
+        const team = Object.entries(counts).sort((a, b) => a[1] - b[1])[0][0];
+
+        setStaffData([...staffData, {
+            id: newId, name: `スタッフ ${newId}`, team, rookie: false, w4: false, sunOff: false, fixNights: null
+        }]);
+    };
+    const removeStaff = (index) => {
+        const newData = [...staffData];
+        newData.splice(index, 1);
+        setStaffData(newData);
+        const newSched = [...schedule];
+        newSched.splice(index, 1);
+        setSchedule(newSched);
+        setLeaderFlags(new Set()); // simpler to reset
+    };
+
+    const toggleLeader = (sIdx, dIdx) => {
+        if (staffData[sIdx].rookie) return;
+        const key = `${sIdx}-${dIdx}`;
+        const newFlags = new Set(leaderFlags);
+        if (newFlags.has(key)) newFlags.delete(key);
+        else newFlags.add(key);
+        setLeaderFlags(newFlags);
+    };
+
+    // ==========================================
+    // Render Helpers
+    // ==========================================
+    const renderCell = (sIdx, dIdx) => {
+        const shiftKey = schedule[sIdx]?.[dIdx];
+        const shift = SHIFT_TYPES[shiftKey];
+        const reqType = requests[sIdx]?.[dIdx];
+        const isReq = !!reqType;
+        const isWarn = validation.cellWarnings[`${sIdx}-${dIdx}`];
+        const isReqFail = validation.requestFailures[`${sIdx}-${dIdx}`];
+        const isLeader = leaderFlags.has(`${sIdx}-${dIdx}`);
+
+        return (
+            <div
+                onClick={() => setEditCell({ sIdx, dIdx })}
+                style={{
+                    ...styles.shiftCell,
+                    backgroundColor: shift?.color || "#555",
+                    color: "#fff",
+                    position: "relative",
+                    outline: isReqFail ? "2px solid yellow" : isWarn ? "2px solid black" : "2px solid transparent",
+                    outlineOffset: "-2px",
+                    opacity: isReq && !isReqFail ? 0.8 : 1
+                }}
+            >
+                {isLeader && <span style={{ position: "absolute", top: 0, left: 2, fontSize: "0.6rem", zIndex: 6 }}>👑</span>}
+                {shift?.label}
+                {isReq && <span style={{ position: "absolute", top: 0, right: 0, fontSize: "0.6rem", zIndex: 6 }}>
+                    {reqType === "DAY" ? "日" : reqType === "OFF" ? "休" : "★"}
+                </span>}
+            </div>
+        );
+    };
+
+    return (
+        <div style={styles.container}>
+            {/* Header */}
+            <header style={styles.header}>
+                <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
+                    <h1 style={{ fontSize: "1.5rem", fontWeight: "bold", margin: 0 }}>看護師シフト管理 🏥</h1>
+
+                    {/* Persistence Controls */}
+                    <div style={{ display: "flex", gap: "0.5rem" }}>
+                        {/* 1. Data Save */}
+                        <button onClick={exportData} style={{ ...styles.persistButton, backgroundColor: "#0EA5E9" }}>
+                            データ保存
+                        </button>
+
+                        {/* 2. Data Load */}
+                        <label style={{ ...styles.persistButton, backgroundColor: "#0EA5E9", cursor: "pointer" }}>
+                            データ読込
+                            <input type="file" accept=".json" onChange={importData} style={{ display: "none" }} />
+                        </label>
+
+                        {/* 3. Staff Save */}
+                        <button onClick={exportStaffData} style={{ ...styles.persistButton, backgroundColor: "#14B8A6" }} title="スタッフ情報のみ保存します">
+                            スタッフ保存
+                        </button>
+
+                        {/* 4. Staff Load */}
+                        <label style={{ ...styles.persistButton, backgroundColor: "#14B8A6", cursor: "pointer" }} title="スタッフ情報のみ読み込みます（シフトは保持）">
+                            スタッフ読込
+                            <input type="file" accept=".json" onChange={importStaffData} style={{ display: "none" }} />
+                        </label>
+                    </div>
+                </div>
+
+                <div style={{ display: "flex", alignItems: "center" }}>
+                    <button style={styles.navButton} onClick={() => changeMonth(-1)}>‹</button>
+                    <span style={{ fontWeight: 700, margin: "0 1rem" }}>{year}年 {month}月</span>
+                    <button style={styles.navButton} onClick={() => changeMonth(1)}>›</button>
+                </div>
+
+                <div>
+                    <button style={styles.actionButton} onClick={() => setShowStaffModal(true)}>スタッフ編集</button>
+                    <button style={styles.actionButton} onClick={() => setShowRequestModal(true)}>
+                        希望勤務 {Object.values(requests).reduce((acc, r) => acc + Object.keys(r).length, 0) > 0 && <span style={styles.badge}>{Object.values(requests).reduce((acc, r) => acc + Object.keys(r).length, 0)}</span>}
+                    </button>
+                    <button style={{ ...styles.actionButton, ...styles.primaryButton }} onClick={generateSchedule}>
+                        ✨ 作成
+                    </button>
+                    <button style={styles.actionButton} onClick={handleCSVExport}>⬇ CSV</button>
+                </div>
+            </header>
+
+            {/* Legend */}
+            <div style={styles.legendBar}>
+                {Object.entries(SHIFT_TYPES).map(([k, v]) => (
+                    <div key={k} style={{ display: "flex", alignItems: "center", marginRight: "1rem" }}>
+                        <div style={{ width: 12, height: 12, backgroundColor: v.color, marginRight: 4, borderRadius: 2 }}></div>
+                        <span>{v.label}</span>
+                    </div>
+                ))}
+                <div style={{ marginLeft: "auto", display: "flex", gap: "1rem" }}>
+                    <span>日勤上限: {T_DAY_WEEK}(平日) / {T_DAY_HOL}(休日)</span>
+                    <span>夜勤人数: {T_NIGHT}</span>
+                    <span>連勤上限: {MAX_CONSECUTIVE_WORK}</span>
+                </div>
+            </div>
+
+            {/* Tabs */}
+            <div style={{ padding: "0.5rem 1rem", borderBottom: "1px solid #1E293B", backgroundColor: "#0F172A" }}>
+                {["ALL", "A", "B", "C"].map(t => (
+                    <button
+                        key={t}
+                        onClick={() => setFilterTeam(t)}
+                        style={{
+                            backgroundColor: filterTeam === t ? "#3B82F6" : "transparent",
+                            color: filterTeam === t ? "#fff" : "#94A3B8",
+                            border: "none", padding: "0.25rem 0.75rem", borderRadius: "1rem", marginRight: "0.5rem", cursor: "pointer"
+                        }}
+                    >
+                        チーム {t}
+                    </button>
+                ))}
+            </div>
+
+            {/* Main Table */}
+            <div style={styles.tableWrapper}>
+                <table style={styles.table}>
+                    <thead>
+                        <tr>
+                            <th style={{ ...styles.th, ...styles.stickyCol, minWidth: 40 }}>No</th>
+                            <th style={{ ...styles.th, ...styles.stickyCol, left: 40, minWidth: 120 }}>名前</th>
+                            <th style={{ ...styles.th, ...styles.stickyCol, left: 160, minWidth: 50 }}>チーム</th>
+                            {daysArray.map(d => {
+                                const date = new Date(year, month - 1, d);
+                                const day = date.getDay();
+                                const isHoli = checkIsHoliday(year, month, d);
+                                let bgColor = styles.th.backgroundColor;
+
+                                if (isHoli || day === 0) {
+                                    bgColor = "#EF4444"; // Red (Sun/Hol)
+                                } else if (day === 6) {
+                                    bgColor = "#3B82F6"; // Blue (Sat) - Standard Tailwind Blue 500
+                                }
+
+                                return (
+                                    <th
+                                        key={d}
+                                        title={isHoli ? "祝日" : ""}
+                                        style={{
+                                            ...styles.th,
+                                            backgroundColor: bgColor,
+                                            color: d === new Date().getDate() ? "#FCD34D" : "white"
+                                        }}
+                                    >
+                                        {d}
+                                    </th>
+                                );
+                            })}
+                            <th style={styles.th}>日勤</th>
+                            <th style={styles.th}>準夜</th>
+                            <th style={styles.th}>深夜</th>
+                            <th style={styles.th}>休日</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {staffData.map((s, idx) => {
+                            if (filterTeam !== "ALL" && s.team !== filterTeam) return null;
+                            const counts = { DAY: 0, START: 0, DEEP: 0, OFF: 0 };
+                            schedule[idx]?.forEach(k => { counts[k]++; });
+
+                            return (
+                                <tr key={s.id}>
+                                    <td style={{ ...styles.td, ...styles.stickyCol, color: (s.w4 || s.sunOff) ? "#FBBF24" : "#94A3B8" }}>
+                                        {s.fixNights !== null && "★"}{idx + 1}
+                                    </td>
+                                    <td style={{ ...styles.td, ...styles.stickyCol, left: 40, textAlign: "left", paddingLeft: 8 }}>
+                                        {s.rookie && "🔰"} {s.w4 && <span style={styles.badge}>W4</span>} {s.name}
+                                    </td>
+                                    <td style={{ ...styles.td, ...styles.stickyCol, left: 160 }}>
+                                        <span style={{ color: s.team === "A" ? "#F87171" : s.team === "B" ? "#4ADE80" : "#60A5FA", fontWeight: "bold" }}>{s.team}</span>
+                                    </td>
+                                    {daysArray.map((d, i) => {
+                                        const date = new Date(year, month - 1, d);
+                                        const day = date.getDay();
+                                        const isHoli = checkIsHoliday(year, month, d);
+                                        let cellBg = "transparent";
+                                        if (isHoli || day === 0) cellBg = "rgba(239, 68, 68, 0.1)"; // Light Red
+                                        else if (day === 6) cellBg = "rgba(59, 130, 246, 0.1)"; // Light Blue
+
+                                        return (
+                                            <td key={d} style={{ ...styles.td, borderLeft: isHoli ? "2px solid #334155" : "", backgroundColor: cellBg }}>
+                                                {renderCell(idx, i)}
+                                            </td>
+                                        );
+                                    })}
+                                    <td style={styles.td}>{counts.DAY}</td>
+                                    <td style={{ ...styles.td, color: s.fixNights !== null ? "#38BDF8" : "inherit", fontWeight: s.fixNights !== null ? "bold" : "normal" }}>{counts.START}</td>
+                                    <td style={{ ...styles.td, color: s.fixNights !== null ? "#38BDF8" : "inherit", fontWeight: s.fixNights !== null ? "bold" : "normal" }}>{counts.DEEP}</td>
+                                    <td style={styles.td}>{counts.OFF}</td>
+                                </tr>
+                            );
+                        })}
+                    </tbody>
+                    {/* Footer Totals */}
+                    <tfoot>
+                        <tr>
+                            <td colSpan={3} style={{ ...styles.th, textAlign: "right" }}>日勤計</td>
+                            {daysArray.map((d, i) => {
+                                const date = new Date(year, month - 1, d);
+                                const day = date.getDay();
+                                const isHoli = checkIsHoliday(year, month, d);
+                                let cellBg = "transparent";
+                                if (isHoli || day === 0) cellBg = "rgba(239, 68, 68, 0.1)";
+                                else if (day === 6) cellBg = "rgba(59, 130, 246, 0.1)";
+
+                                return (
+                                    <td key={d} style={{ ...styles.td, fontWeight: "bold", color: validation.colWarnings[`${i}-DAY`], backgroundColor: cellBg }}>
+                                        {staffData.filter((_, idx) => schedule[idx]?.[i] === "DAY" && (filterTeam === "ALL" || staffData[idx].team === filterTeam)).length}
+                                    </td>
+                                );
+                            })}
+                            <td colSpan={3}></td>
+                        </tr>
+                        <tr>
+                            <td colSpan={3} style={{ ...styles.th, textAlign: "right" }}>準夜計</td>
+                            {daysArray.map((d, i) => {
+                                const date = new Date(year, month - 1, d);
+                                const day = date.getDay();
+                                const isHoli = checkIsHoliday(year, month, d);
+                                let cellBg = "transparent";
+                                if (isHoli || day === 0) cellBg = "rgba(239, 68, 68, 0.1)";
+                                else if (day === 6) cellBg = "rgba(59, 130, 246, 0.1)";
+
+                                return (
+                                    <td key={d} style={{ ...styles.td, fontWeight: "bold", color: validation.colWarnings[`${i}-START`], backgroundColor: cellBg }}>
+                                        {staffData.filter((_, idx) => schedule[idx]?.[i] === "START" && (filterTeam === "ALL" || staffData[idx].team === filterTeam)).length}
+                                    </td>
+                                );
+                            })}
+                            <td colSpan={3}></td>
+                        </tr>
+                        <tr>
+                            <td colSpan={3} style={{ ...styles.th, textAlign: "right" }}>深夜計</td>
+                            {daysArray.map((d, i) => {
+                                const date = new Date(year, month - 1, d);
+                                const day = date.getDay();
+                                const isHoli = checkIsHoliday(year, month, d);
+                                let cellBg = "transparent";
+                                if (isHoli || day === 0) cellBg = "rgba(239, 68, 68, 0.1)";
+                                else if (day === 6) cellBg = "rgba(59, 130, 246, 0.1)";
+
+                                return (
+                                    <td key={d} style={{ ...styles.td, fontWeight: "bold", color: validation.colWarnings[`${i}-DEEP`], backgroundColor: cellBg }}>
+                                        {staffData.filter((_, idx) => schedule[idx]?.[i] === "DEEP" && (filterTeam === "ALL" || staffData[idx].team === filterTeam)).length}
+                                    </td>
+                                );
+                            })}
+                            <td colSpan={3}></td>
+                        </tr>
+
+                    </tfoot>
+                </table>
+            </div>
+
+            {/* Debug Panel (Temporary) */}
+            <div style={{ backgroundColor: "#334155", padding: "1rem", margin: "1rem" }}>
+                <h4>Debug Info 2</h4>
+                <div>Month: {month}</div>
+                <div>Prev Key: {year}-{month - 1} ({monthlyCache[`${year}-${month - 1}`] ? "Found" : "Missing"})</div>
+                <div>Staff 0 Prev: {JSON.stringify(prevMonthSchedule[0])}</div>
+            </div>
+
+            {/* Prev Month Modal */}
+            {showPrevMonthModal && (
+                <div style={styles.modalOverlay} onClick={() => setShowPrevMonthModal(false)}>
+                    <div style={{ ...styles.modalContent, width: "800px" }} onClick={e => e.stopPropagation()}>
+                        <h3>前月勤務設定 (過去10日間)</h3>
+                        <div style={{ overflowX: "auto" }}>
+                            <table style={styles.table}>
+                                <thead>
+                                    <tr>
+                                        <th style={styles.th}>名前</th>
+                                        {[...Array(10)].map((_, i) => <th key={i} style={styles.th}>前{10 - i}日</th>)}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {staffData.map((s, sIdx) => (
+                                        <tr key={sIdx}>
+                                            <td style={styles.td}>{s.name}</td>
+                                            {prevMonthSchedule[sIdx]?.map((shift, dIdx) => (
+                                                <td key={dIdx} style={styles.td}>
+                                                    <button
+                                                        onClick={() => {
+                                                            const newPrev = prevMonthSchedule.map(row => [...row]);
+                                                            const current = newPrev[sIdx][dIdx];
+
+                                                            // Cycle: DAY -> START(準) -> DEEP(深) -> OFF -> DAY
+                                                            const next =
+                                                                current === "DAY" ? "START" :
+                                                                    current === "START" ? "DEEP" :
+                                                                        current === "DEEP" ? "OFF" : "DAY";
+
+                                                            newPrev[sIdx][dIdx] = next;
+                                                            setPrevMonthSchedule(newPrev);
+                                                        }}
+                                                        style={{
+                                                            padding: "0.25rem 0.5rem",
+                                                            backgroundColor:
+                                                                shift === "OFF" ? "#F97316" :
+                                                                    shift === "DEEP" ? "#617d98" :
+                                                                        shift === "START" ? "#eab308" :
+                                                                            "#3B82F6",
+                                                            color: "white",
+                                                            border: "none",
+                                                            borderRadius: "4px",
+                                                            cursor: "pointer",
+                                                            minWidth: "40px"
+                                                        }}
+                                                    >
+                                                        {shift === "OFF" ? "休" : shift === "DEEP" ? "深" : shift === "START" ? "準" : "日"}
+                                                    </button>
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div style={{ marginTop: "1rem", textAlign: "right" }}>
+                            <button style={styles.primaryButton} onClick={() => setShowPrevMonthModal(false)}>閉じる</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Staff Modal */}
+            {showStaffModal && (
+                <div style={styles.modalOverlay} onClick={() => setShowStaffModal(false)}>
+                    <div style={styles.modalContent} onClick={e => e.stopPropagation()}>
+                        <h3>スタッフ管理</h3>
+                        <table style={{ width: "100%", borderCollapse: "collapse", marginBottom: "1rem" }}>
+                            <thead>
+                                <tr style={{ textAlign: "left", borderBottom: "1px solid #333" }}>
+                                    <th style={{ borderRight: "1px solid #555", padding: "0.5rem" }}>名前</th>
+                                    <th style={{ borderRight: "1px solid #555", padding: "0.5rem" }}>チーム</th>
+                                    <th style={{ borderRight: "1px solid #555", padding: "0.5rem" }}>リーダー</th>
+                                    <th style={{ borderRight: "1px solid #555", padding: "0.5rem" }}>新人</th>
+                                    <th style={{ borderRight: "1px solid #555", padding: "0.5rem" }}>W4</th>
+                                    <th style={{ borderRight: "1px solid #555", padding: "0.5rem" }}>日曜休</th>
+                                    <th style={{ borderRight: "1px solid #555", padding: "0.5rem" }}>夜勤固定</th>
+                                    <th style={{ padding: "0.5rem" }}>削除</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {staffData.map((s, idx) => (
+                                    <tr key={idx} style={{ borderBottom: "1px solid #334155" }}>
+                                        <td style={{ borderRight: "1px solid #555", padding: "0.5rem" }}>
+                                            <input value={s.name} onChange={e => updateStaff(idx, "name", e.target.value)} style={{ background: "transparent", border: "none", color: "white", width: "100%" }} />
+                                        </td>
+                                        <td style={{ borderRight: "1px solid #555", padding: "0.5rem" }}>
+                                            <select value={s.team} onChange={e => updateStaff(idx, "team", e.target.value)} style={{ background: "#334155", color: "white", border: "none", width: "100%" }}>
+                                                <option>A</option><option>B</option><option>C</option>
+                                            </select>
+                                        </td>
+                                        <td style={{ borderRight: "1px solid #555", padding: "0.5rem", textAlign: "center" }}>
+                                            <input type="checkbox" checked={s.isLeader || false} onChange={e => updateStaff(idx, "isLeader", e.target.checked)} />
+                                        </td>
+                                        <td style={{ borderRight: "1px solid #555", padding: "0.5rem", textAlign: "center" }}>
+                                            <input type="checkbox" checked={s.rookie} onChange={e => updateStaff(idx, "rookie", e.target.checked)} />
+                                        </td>
+                                        <td style={{ borderRight: "1px solid #555", padding: "0.5rem", textAlign: "center" }}>
+                                            <input type="checkbox" checked={s.w4} onChange={e => updateStaff(idx, "w4", e.target.checked)} />
+                                        </td>
+                                        <td style={{ borderRight: "1px solid #555", padding: "0.5rem", textAlign: "center" }}>
+                                            <input type="checkbox" checked={s.sunOff} onChange={e => updateStaff(idx, "sunOff", e.target.checked)} />
+                                        </td>
+                                        <td style={{ borderRight: "1px solid #555", padding: "0.5rem" }}>
+                                            <select value={s.fixNights ?? "auto"} onChange={e => updateStaff(idx, "fixNights", e.target.value === "auto" ? null : Number(e.target.value))} style={{ background: "#334155", color: "white", border: "none", width: "100%" }}>
+                                                <option value="auto">自動</option>
+                                                {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}
+                                            </select>
+                                        </td>
+                                        <td style={{ padding: "0.5rem", textAlign: "center" }}>
+                                            <button onClick={() => removeStaff(idx)} style={{ color: "red", background: "none", border: "none", cursor: "pointer", fontWeight: "bold" }}>X</button>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                            <button style={styles.actionButton} onClick={addStaff}>+ 追加</button>
+                            <button style={styles.primaryButton} onClick={() => setShowStaffModal(false)}>保存 & 閉じる</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Requests Modal */}
+            {showRequestModal && (
+                <div style={styles.modalOverlay} onClick={() => setShowRequestModal(false)}>
+                    <div style={{ ...styles.modalContent, width: "800px", display: "flex", gap: "1rem" }} onClick={e => e.stopPropagation()}>
+                        <div style={{ width: "200px", borderRight: "1px solid #333", maxHeight: "60vh", overflow: "auto" }}>
+                            {staffData.map((s, idx) => (
+                                <div
+                                    key={idx}
+                                    onClick={() => setEditCell({ sIdx: idx, dIdx: -1 })}
+                                    style={{
+                                        padding: "0.5rem",
+                                        cursor: "pointer",
+                                        backgroundColor: editCell?.sIdx === idx ? "#334155" : "transparent"
+                                    }}
+                                >
+                                    {s.name} <span style={styles.badge}>{requests[idx]?.size || 0}</span>
+                                </div>
+                            ))}
+                        </div>
+                        <div style={{ flex: 1 }}>
+                            {editCell && editCell.dIdx === -1 ? (
+                                <>
+                                    <h3>{staffData[editCell.sIdx].name} の希望休選択</h3>
+                                    <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "5px" }}>
+                                        {["日", "月", "火", "水", "木", "金", "土"].map(d => <div key={d} style={{ textAlign: "center", color: "#94A3B8" }}>{d}</div>)}
+                                        {Array.from({ length: new Date(year, month - 1, 1).getDay() }).map((_, i) => <div key={`empty-${i}`}></div>)}
+
+                                        {daysArray.map((d, i) => {
+                                            const reqType = requests[editCell.sIdx]?.[i];
+                                            return (
+                                                <button
+                                                    key={d}
+                                                    onClick={() => {
+                                                        const current = requests[editCell.sIdx] || {};
+                                                        const newReqs = { ...current };
+                                                        if (!reqType) newReqs[i] = "OFF";
+                                                        else if (reqType === "OFF") newReqs[i] = "DAY";
+                                                        else delete newReqs[i];
+
+                                                        setRequests({ ...requests, [editCell.sIdx]: newReqs });
+                                                    }}
+                                                    style={{
+                                                        padding: "0.5rem",
+                                                        backgroundColor: reqType === "OFF" ? "#F97316" : reqType === "DAY" ? "#3B82F6" : "#334155",
+                                                        color: "#fff",
+                                                        border: "none",
+                                                        borderRadius: "4px",
+                                                        cursor: "pointer",
+                                                        fontWeight: "bold"
+                                                    }}
+                                                >
+                                                    {d}
+                                                    {reqType === "DAY" && <span style={{ fontSize: "0.6rem", display: "block" }}>日</span>}
+                                                    {reqType === "OFF" && <span style={{ fontSize: "0.6rem", display: "block" }}>休</span>}
+                                                </button>
+                                            )
+                                        })}
+                                    </div>
+                                    <button style={{ marginTop: "1rem", ...styles.dangerButton }} onClick={() => {
+                                        const newR = { ...requests };
+                                        delete newR[editCell.sIdx];
+                                        setRequests(newR);
+                                    }}>全てクリア</button>
+                                </>
+                            ) : (
+                                <div style={{ color: "#94A3B8" }}>スタッフを選択してください</div>
+                            )}
+
+                            <div style={{ marginTop: "1rem", textAlign: "right" }}>
+                                <button style={styles.primaryButton} onClick={() => setShowRequestModal(false)}>確定</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Cell Modal */}
+            {editCell && editCell.dIdx !== -1 && (
+                <div style={styles.modalOverlay} onClick={() => setEditCell(null)}>
+                    <div style={{ ...styles.modalContent, width: "300px" }} onClick={e => e.stopPropagation()}>
+                        <h3>{staffData[editCell.sIdx].name} - {month}/{editCell.dIdx + 1}</h3>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.5rem", marginTop: "1rem" }}>
+                            {Object.entries(SHIFT_TYPES).map(([k, v]) => (
+                                <button
+                                    key={k}
+                                    onClick={() => {
+                                        const newSched = [...schedule];
+                                        newSched[editCell.sIdx][editCell.dIdx] = k;
+                                        setSchedule(newSched);
+                                        setEditCell(null);
+                                    }}
+                                    style={{
+                                        backgroundColor: v.color,
+                                        color: "white",
+                                        padding: "1rem",
+                                        border: "none",
+                                        borderRadius: "0.5rem",
+                                        cursor: "pointer",
+                                        fontWeight: "bold"
+                                    }}
+                                >
+                                    {v.label}
+                                </button>
+                            ))}
+                        </div>
+                        {/* Dynamic Leader Toggle */}
+                        <div style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid #334155" }}>
+                            <button
+                                onClick={() => {
+                                    toggleLeader(editCell.sIdx, editCell.dIdx);
+                                    setEditCell(null);
+                                }}
+                                disabled={staffData[editCell.sIdx].rookie || schedule[editCell.sIdx][editCell.dIdx] === "OFF"}
+                                style={{
+                                    width: "100%",
+                                    padding: "0.75rem",
+                                    backgroundColor: leaderFlags.has(`${editCell.sIdx}-${editCell.dIdx}`) ? "#F59E0B" : "#334155",
+                                    color: "white",
+                                    border: "none",
+                                    borderRadius: "0.5rem",
+                                    cursor: staffData[editCell.sIdx].rookie ? "not-allowed" : "pointer",
+                                    opacity: staffData[editCell.sIdx].rookie || schedule[editCell.sIdx][editCell.dIdx] === "OFF" ? 0.5 : 1,
+                                    fontWeight: "bold",
+                                    display: "flex",
+                                    alignItems: "center",
+                                    justifyContent: "center",
+                                    gap: "0.5rem"
+                                }}
+                            >
+                                <span>👑</span>
+                                {leaderFlags.has(`${editCell.sIdx}-${editCell.dIdx}`) ? "リーダー解除" : "リーダー任命"}
+                            </button>
+                            {staffData[editCell.sIdx].rookie && <div style={{ fontSize: "0.7rem", color: "#94A3B8", textAlign: "center", marginTop: 4 }}>※新人はリーダー不可</div>}
+                            {schedule[editCell.sIdx][editCell.dIdx] === "OFF" && <div style={{ fontSize: "0.7rem", color: "#94A3B8", textAlign: "center", marginTop: 4 }}>※休みの日は設定不可</div>}
+                        </div>
+
+                        {/* Request Toggle */}
+                        <div style={{ marginTop: "1rem", paddingTop: "1rem", borderTop: "1px solid #334155" }}>
+                            <h4 style={{ margin: "0 0 0.5rem 0", fontSize: "0.9rem", color: "#94A3B8" }}>希望設定</h4>
+                            <div style={{ display: "flex", gap: "0.5rem" }}>
+                                <button
+                                    onClick={() => {
+                                        const newReqs = { ...requests[editCell.sIdx] };
+                                        delete newReqs[editCell.dIdx];
+                                        setRequests({ ...requests, [editCell.sIdx]: newReqs });
+                                        setEditCell(null);
+                                    }}
+                                    style={{ flex: 1, padding: "0.5rem", backgroundColor: "#334155", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                                >
+                                    なし
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const newReqs = { ...(requests[editCell.sIdx] || {}) };
+                                        newReqs[editCell.dIdx] = "OFF";
+                                        setRequests({ ...requests, [editCell.sIdx]: newReqs });
+                                        setEditCell(null);
+                                    }}
+                                    style={{ flex: 1, padding: "0.5rem", backgroundColor: "#F97316", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                                >
+                                    休み
+                                </button>
+                                <button
+                                    onClick={() => {
+                                        const newReqs = { ...(requests[editCell.sIdx] || {}) };
+                                        newReqs[editCell.dIdx] = "DAY";
+                                        setRequests({ ...requests, [editCell.sIdx]: newReqs });
+                                        setEditCell(null);
+                                    }}
+                                    style={{ flex: 1, padding: "0.5rem", backgroundColor: "#3B82F6", color: "white", border: "none", borderRadius: "4px", cursor: "pointer" }}
+                                >
+                                    日勤
+                                </button>
+                            </div>
+                        </div>
+
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+}

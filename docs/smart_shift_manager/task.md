@@ -1,0 +1,24 @@
+# Smart Shift Management Tool Tasks
+
+- [x] Project Initialization
+    - [x] Initialize React + Vite project <!-- id: 0 -->
+    - [x] Setup Tailwind CSS (if requested/appropriate, user mentioned "Rich Aesthetics") <!-- id: 1 -->
+    - [x] Setup project structure (components, utils, types) <!-- id: 2 -->
+- [x] Data Modeling & State Management
+    - [x] Define types for Staff (Attributes), Shifts, and Schedule <!-- id: 3 -->
+    - [x] Create mock data for Staff (Teams A/B/C, Leader, Junior, Special) <!-- id: 4 -->
+    - [x] Implement state management for the schedule <!-- id: 5 -->
+- [ ] Core Algorithm Implementation
+    - [ ] Implement "Semi-Night -> Night -> Off" logic <!-- id: 6 -->
+    - [ ] Implement constraints (Max 5 days, Leader/Junior rules) <!-- id: 7 -->
+    - [ ] Implement Team Balance logic <!-- id: 8 -->
+    - [ ] Create `generateSchedule` function <!-- id: 9 -->
+- [x] UI Implementation
+    - [x] Create Main Schedule View (Grid) <!-- id: 10 -->
+    - [x] Implement Drag & Drop functionality <!-- id: 11 -->
+    - [x] Implement Leader "L" flag toggling <!-- id: 12 -->
+    - [x] Implement Real-time Totals & Validation <!-- id: 13 -->
+- [x] Feature Completion
+    - [x] CSV Export <!-- id: 14 -->
+    - [x] Validation Alerts (Red highlight) <!-- id: 15 -->
+    - [x] Final Polish & Testing <!-- id: 16 -->

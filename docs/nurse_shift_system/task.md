@@ -1,0 +1,59 @@
+# Nurse Shift Management System - Task List
+
+- [ ] Project Setup <!-- id: 0 -->
+    - [x] Create `task.md` <!-- id: 1 -->
+    - [x] Create `implementation_plan.md` <!-- id: 2 -->
+    - [x] Create User Documentation (`docs/nurse_shift_system/`) <!-- id: 3 -->
+- [x] Implementation <!-- id: 4 -->
+    - [x] Create `src/components/NurseShiftApp.tsx` <!-- id: 5 -->
+    - [x] Update `src/App.tsx` <!-- id: 6 -->
+- [x] Verification <!-- id: 7 -->
+    - [x] Manual Code Review <!-- id: 8 -->
+    - [x] Create `walkthrough.md` <!-- id: 9 -->
+- [x] Fixes <!-- id: 10 -->
+    - [x] Convert to JSX (Fix Parse Error) <!-- id: 11 -->
+- [x] Refinements <!-- id: 12 -->
+    - [x] Localization (English -> Japanese) <!-- id: 13 -->
+    - [x] Dynamic Leader Assignment (Manual) <!-- id: 14 -->
+    - [x] Implement Max 5 Consecutive Work Days Limit <!-- id: 15 -->
+    - [x] Equalize Night Shift Counts <!-- id: 16 -->
+    - [x] Equalize Night Shift Counts <!-- id: 16 -->
+    - [x] Fix Night Shift Drop-off (Weighted Random) <!-- id: 17 -->
+    - [x] UI Refinements (Off Count & Highlight) <!-- id: 18 -->
+    - [x] Equalize Day Shift Counts <!-- id: 19 -->
+    - [x] Fix Consecutive Work Logic (Lookback for OFF) <!-- id: 23 -->
+    - [x] Add Staff Leader Attribute & Checkbox <!-- id: 20 -->
+    - [x] Implement Day Shift Requests <!-- id: 21 -->
+    - [x] Enforce Leader Constraint (>=1 per shift) <!-- id: 22 -->
+    - [x] Fix Night Shift Generation (Leader Pool Injection) <!-- id: 24 -->
+    - [x] Fix Day Request Logic (Protect from Overwrite) <!-- id: 25 -->
+    - [x] UI: Update Request Icons (休/日) <!-- id: 26 -->
+    - [x] UI: Add Request Toggle to Edit Cell Modal <!-- id: 27 -->
+    - [x] Feature: JSON Export/Import for Staff & Requests <!-- id: 28 -->
+    - [x] Feature: Previous Month Data Input & Persistence <!-- id: 29 -->
+    - [x] Logic: Update Leader Defaults (Non-Rookie = Leader) <!-- id: 30 -->
+    - [x] Logic: Optimize Consecutive/Night Checks with Prev Data <!-- id: 31 -->
+    - [x] UI: Restore Missing Header Buttons (Prev/Save/Load) <!-- id: 32 -->
+    - [x] Logic: Persist Prev Month Data on Navigation <!-- id: 33 -->
+    - [x] Logic: Enforce Prev Month Semi-Night -> Deep-Night <!-- id: 34 -->
+    - [x] Logic: Enforce Prev Month Consecutive Work Limit during Generation <!-- id: 35 -->
+    - [x] Logic: Enforce Prev Month Consecutive Work Limit during Generation <!-- id: 35 -->
+    - [x] UI: Customize Header Colors (Sat/Sun/Holiday) <!-- id: 36 -->
+        - [x] Fix: Exclude Saturday from `checkIsHoliday` <!-- id: 45 -->
+    - [x] UI: Fix Staff Numbering (Sequential) <!-- id: 37 -->
+    - [x] UI: Add Vertical Lines to Staff Modal <!-- id: 38 -->
+    - [x] Logic: Prioritize Holiday Equalization <!-- id: 39 -->
+    - [x] Logic: Auto-link Previous Month Data (10 days) <!-- id: 40 -->
+        - [x] Fetch from `monthlyCache` if available <!-- id: 41 -->
+        - [x] Disable manual input if auto-linked <!-- id: 42 -->
+        - [x] Extend `prevMonthSchedule` to 10 days <!-- id: 43 -->
+    - [x] Fix: EOM Semi-Night Assignment for Next Month Deep Shift <!-- id: 44 -->
+    - [x] Feature: Import Staff Data Only (Keep Schedule) <!-- id: 46 -->
+    - [x] Feature: Export Staff Data Only <!-- id: 47 -->
+    - [x] UI: Rename and Reorder Save/Load Buttons <!-- id: 48 -->
+    - [x] UI: Remove "Prev Month Setting" Button <!-- id: 49 -->
+    - [x] UI: Standardize Button Size and Remove Icons <!-- id: 50 -->
+    - [x] UI: Rename "Staff" to "Staff Edit" and "Request" to "Request Shift", Remove Icons <!-- id: 51 -->
+    -   [x] UI: Change Validation Warning Border from Red to Black <!-- id: 52 -->
+    -   [x] UI: Fix Layout Shift (Final Solution: Use `outline` + `outline-offset`) <!-- id: 53 -->
+    -   [x] UI: Remove "Total Holidays" Row from Footer <!-- id: 54 -->
