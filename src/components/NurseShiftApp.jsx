@@ -4,9 +4,6 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from "react"
 // Constants & Types
 // ==========================================
 
-const T_DAY_WEEK = 11;
-const T_DAY_HOL = 7;
-const T_NIGHT = 4;
 const MIN_NIGHTS = 2;
 const EXTRA_OFF = 5;
 const MAX_CONSECUTIVE_WORK = 5;
@@ -236,6 +233,12 @@ export default function NurseShiftApp() {
     const [showStaffModal, setShowStaffModal] = useState(false);
     const [showRequestModal, setShowRequestModal] = useState(false);
     const [showReadPrevMonthModal, setShowReadPrevMonthModal] = useState(false);
+    const [showConfigModal, setShowConfigModal] = useState(false);
+    const [shiftConfig, setShiftConfig] = useState({
+        dayWeek: 11,
+        dayHol: 7,
+        night: 4
+    });
     // monthlyCache: "YYYY-MM" -> { requests, prevMonthSchedule, leaderFlagsArr, schedule }
     const [monthlyCache, setMonthlyCache] = useState({});
     const [editCell, setEditCell] = useState(null);
@@ -415,11 +418,11 @@ export default function NurseShiftApp() {
                         const idx = pool.findIndex(pid => staffData[pid].team === t);
                         if (idx !== -1) pick(idx);
                     }
-                    while (currentSelection.length < T_NIGHT && pool.length > 0) {
+                    while (currentSelection.length < shiftConfig.night && pool.length > 0) {
                         pick(0);
                     }
 
-                    if (currentSelection.length === T_NIGHT) {
+                    if (currentSelection.length === shiftConfig.night) {
                         const rookies = currentSelection.filter(pid => staffData[pid].rookie).length;
                         const leaders = currentSelection.filter(pid => staffData[pid].isLeader).length;
 
@@ -487,7 +490,7 @@ export default function NurseShiftApp() {
             // [PHASE 4] Day Limit Enforcement
             for (let dIdx = 0; dIdx < daysInMonth; dIdx++) {
                 const isHoli = checkIsHoliday(year, month, dIdx + 1);
-                const maxDay = isHoli ? T_DAY_HOL : T_DAY_WEEK;
+                const maxDay = isHoli ? shiftConfig.dayHol : shiftConfig.dayWeek;
 
                 const dayStaff = staffData.map((_, sIdx) => sIdx).filter(sIdx => newSched[sIdx][dIdx] === "DAY");
 
@@ -578,7 +581,7 @@ export default function NurseShiftApp() {
 
             for (let d = 0; d < daysInMonth; d++) {
                 const isHoli = checkIsHoliday(year, month, d + 1);
-                const limitDay = isHoli ? T_DAY_HOL : T_DAY_WEEK;
+                const limitDay = isHoli ? shiftConfig.dayHol : shiftConfig.dayWeek;
 
                 let cDay = 0, cStart = 0, cDeep = 0;
                 let rookiesStart = 0, rookiesDeep = 0;
@@ -607,8 +610,8 @@ export default function NurseShiftApp() {
 
                 // Column status
                 v.colWarnings[`${d}-DAY`] = cDay > limitDay ? "red" : cDay < limitDay - 2 ? "orange" : "#10B981";
-                v.colWarnings[`${d}-START`] = cStart !== T_NIGHT ? "red" : rookiesStart >= 2 ? "orange" : leadersStart === 0 ? "magenta" : "#10B981";
-                v.colWarnings[`${d}-DEEP`] = cDeep !== T_NIGHT ? "red" : rookiesDeep >= 2 ? "orange" : leadersDeep === 0 ? "magenta" : "#10B981";
+                v.colWarnings[`${d}-START`] = cStart !== shiftConfig.night ? "red" : rookiesStart >= 2 ? "orange" : leadersStart === 0 ? "magenta" : "#10B981";
+                v.colWarnings[`${d}-DEEP`] = cDeep !== shiftConfig.night ? "red" : rookiesDeep >= 2 ? "orange" : leadersDeep === 0 ? "magenta" : "#10B981";
 
                 // Rookie overlap cell warnings
                 if (rookiesStart >= 2) {
@@ -717,6 +720,7 @@ export default function NurseShiftApp() {
                 prevMonthSchedule,
                 leaderFlagsArr: Array.from(leaderFlags),
                 schedule,
+                shiftConfig,
                 monthlyCache: Object.fromEntries(
                     Object.entries(monthlyCache).map(([k, v]) => [
                         k,
@@ -764,6 +768,7 @@ export default function NurseShiftApp() {
                 if (data.requests) setRequests(data.requests);
                 if (data.prevMonthSchedule) setPrevMonthSchedule(data.prevMonthSchedule);
                 if (data.schedule) setSchedule(data.schedule);
+                if (data.shiftConfig) setShiftConfig(data.shiftConfig);
                 if (data.leaderFlagsArr) setLeaderFlags(new Set(data.leaderFlagsArr));
                 if (data.monthlyCache) {
                     // Restore leaderFlags as Set in each cached month
@@ -962,6 +967,7 @@ export default function NurseShiftApp() {
                 </div>
 
                 <div>
+                    <button style={styles.actionButton} onClick={() => setShowConfigModal(true)}>勤務人数設定</button>
                     <button style={styles.actionButton} onClick={() => setShowStaffModal(true)}>スタッフ編集</button>
                     <button style={styles.actionButton} onClick={() => setShowRequestModal(true)}>
                         希望勤務 {totalRequests > 0 && <span style={styles.badge}>{totalRequests}</span>}
@@ -982,8 +988,8 @@ export default function NurseShiftApp() {
                     </div>
                 ))}
                 <div style={{ marginLeft: "auto", display: "flex", gap: "1rem" }}>
-                    <span>日勤上限: {T_DAY_WEEK}(平日) / {T_DAY_HOL}(休日)</span>
-                    <span>夜勤人数: {T_NIGHT}</span>
+                    <span>日勤上限: {shiftConfig.dayWeek}(平日) / {shiftConfig.dayHol}(休日)</span>
+                    <span>夜勤人数: {shiftConfig.night}</span>
                     <span>連勤上限: {MAX_CONSECUTIVE_WORK}</span>
                     <span
                         onClick={() => setShowReadPrevMonthModal(true)}
@@ -1169,6 +1175,51 @@ export default function NurseShiftApp() {
                 </div>
             )}
 
+            {/* Shift Config Modal */}
+            {showConfigModal && (
+                <div style={styles.modalOverlay} onClick={() => setShowConfigModal(false)}>
+                    <div style={{ ...styles.modalContent, width: "400px" }} onClick={e => e.stopPropagation()}>
+                        <h3>勤務人数設定</h3>
+                        <div style={{ display: "flex", flexDirection: "column", gap: "1.5rem", marginTop: "1rem" }}>
+                            <div>
+                                <label style={{ display: "block", marginBottom: "0.5rem", color: "#94A3B8" }}>平日日勤の必要人数</label>
+                                <input
+                                    type="number"
+                                    value={shiftConfig.dayWeek}
+                                    onChange={e => setShiftConfig(prev => ({ ...prev, dayWeek: parseInt(e.target.value) || 0 }))}
+                                    style={{ width: "100%", padding: "0.5rem", background: "#334155", color: "white", border: "none", borderRadius: "4px" }}
+                                />
+                            </div>
+                            <div>
+                                <label style={{ display: "block", marginBottom: "0.5rem", color: "#94A3B8" }}>休日日勤の必要人数</label>
+                                <input
+                                    type="number"
+                                    value={shiftConfig.dayHol}
+                                    onChange={e => setShiftConfig(prev => ({ ...prev, dayHol: parseInt(e.target.value) || 0 }))}
+                                    style={{ width: "100%", padding: "0.5rem", background: "#334155", color: "white", border: "none", borderRadius: "4px" }}
+                                />
+                            </div>
+                            <div>
+                                <label style={{ display: "block", marginBottom: "0.5rem", color: "#94A3B8" }}>準夜・深夜の各人数</label>
+                                <input
+                                    type="number"
+                                    value={shiftConfig.night}
+                                    onChange={e => setShiftConfig(prev => ({ ...prev, night: parseInt(e.target.value) || 0 }))}
+                                    style={{ width: "100%", padding: "0.5rem", background: "#334155", color: "white", border: "none", borderRadius: "4px" }}
+                                />
+                            </div>
+                        </div>
+                        <div style={{ marginTop: "2rem", textAlign: "right" }}>
+                            <button
+                                style={{ ...styles.actionButton, ...styles.primaryButton }}
+                                onClick={() => setShowConfigModal(false)}
+                            >
+                                保存 & 閉じる
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             {/* Staff Modal */}
             {showStaffModal && (
