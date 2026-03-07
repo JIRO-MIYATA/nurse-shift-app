@@ -609,7 +609,7 @@ export default function NurseShiftApp() {
                 });
 
                 // Column status
-                v.colWarnings[`${d}-DAY`] = cDay > limitDay ? "red" : cDay < limitDay - 2 ? "orange" : "#10B981";
+                v.colWarnings[`${d}-DAY`] = cDay > limitDay ? "red" : cDay < limitDay ? "orange" : "#10B981";
                 v.colWarnings[`${d}-START`] = cStart !== shiftConfig.night ? "red" : rookiesStart >= 2 ? "orange" : leadersStart === 0 ? "magenta" : "#10B981";
                 v.colWarnings[`${d}-DEEP`] = cDeep !== shiftConfig.night ? "red" : rookiesDeep >= 2 ? "orange" : leadersDeep === 0 ? "magenta" : "#10B981";
 
