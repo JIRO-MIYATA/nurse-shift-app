@@ -235,7 +235,7 @@ export default function NurseShiftApp() {
     const [filterTeam, setFilterTeam] = useState("ALL");
     const [showStaffModal, setShowStaffModal] = useState(false);
     const [showRequestModal, setShowRequestModal] = useState(false);
-    const [showPrevMonthModal, setShowPrevMonthModal] = useState(false);
+    const [showReadPrevMonthModal, setShowReadPrevMonthModal] = useState(false);
     // monthlyCache: "YYYY-MM" -> { requests, prevMonthSchedule, leaderFlagsArr, schedule }
     const [monthlyCache, setMonthlyCache] = useState({});
     const [editCell, setEditCell] = useState(null);
@@ -985,17 +985,18 @@ export default function NurseShiftApp() {
                     <span>日勤上限: {T_DAY_WEEK}(平日) / {T_DAY_HOL}(休日)</span>
                     <span>夜勤人数: {T_NIGHT}</span>
                     <span>連勤上限: {MAX_CONSECUTIVE_WORK}</span>
-                    <span style={{ color: isPrevMonthLinked ? "#10B981" : "#F97316" }}>
-                        前月: {isPrevMonthLinked ? "✓ 連携済" : "⚠ 手動"}
+                    <span
+                        onClick={() => setShowReadPrevMonthModal(true)}
+                        style={{
+                            color: isPrevMonthLinked ? "#10B981" : "#F97316",
+                            cursor: "pointer",
+                            textDecoration: "underline",
+                            textUnderlineOffset: "4px"
+                        }}
+                        title="クリックして前月データを確認"
+                    >
+                        前月: {isPrevMonthLinked ? "✓ 連携済" : "⚠ 未連携"}
                     </span>
-                    {!isPrevMonthLinked && (
-                        <button
-                            onClick={() => setShowPrevMonthModal(true)}
-                            style={{ ...styles.actionButton, padding: "0.1rem 0.5rem", marginLeft: 0, fontSize: "0.75rem" }}
-                        >
-                            前月設定
-                        </button>
-                    )}
                 </div>
             </div>
 
@@ -1112,15 +1113,13 @@ export default function NurseShiftApp() {
                 </table>
             </div>
 
-            {/* ===== Modals ===== */}
-
-            {/* Prev Month Modal */}
-            {showPrevMonthModal && (
-                <div style={styles.modalOverlay} onClick={() => setShowPrevMonthModal(false)}>
+            {/* Read-only Prev Month Modal */}
+            {showReadPrevMonthModal && (
+                <div style={styles.modalOverlay} onClick={() => setShowReadPrevMonthModal(false)}>
                     <div style={{ ...styles.modalContent, width: "800px" }} onClick={e => e.stopPropagation()}>
-                        <h3>前月勤務設定 (過去{PREV_MONTH_LOOKBACK}日間)</h3>
+                        <h3>前月勤務実績の確認 (過去{PREV_MONTH_LOOKBACK}日間)</h3>
                         <p style={{ color: "#94A3B8", fontSize: "0.85rem" }}>
-                            前月のデータが見つかりません。最終日付近の勤務を手動で入力してください。
+                            自動連携されている前月末の勤務実績です。このデータに基づき夜勤や連勤のルールが適用されます。
                         </p>
                         <div style={{ overflowX: "auto" }}>
                             <table style={styles.table}>
@@ -1138,27 +1137,19 @@ export default function NurseShiftApp() {
                                             <td style={styles.td}>{s.name}</td>
                                             {prevMonthSchedule[sIdx]?.map((shift, dIdx) => (
                                                 <td key={dIdx} style={styles.td}>
-                                                    <button
-                                                        onClick={() => {
-                                                            const next = { DAY: "START", START: "DEEP", DEEP: "OFF", OFF: "DAY" };
-                                                            setPrevMonthSchedule(prev => {
-                                                                const newPrev = prev.map(row => [...row]);
-                                                                newPrev[sIdx][dIdx] = next[shift] || "DAY";
-                                                                return newPrev;
-                                                            });
-                                                        }}
+                                                    <div
                                                         style={{
                                                             padding: "0.25rem 0.5rem",
                                                             backgroundColor:
                                                                 shift === "OFF" ? "#64748B" :
                                                                     shift === "DEEP" ? "#A855F7" :
                                                                         shift === "START" ? "#F97316" : "#3B82F6",
-                                                            color: "white", border: "none", borderRadius: "4px",
-                                                            cursor: "pointer", minWidth: "40px"
+                                                            color: "white", borderRadius: "4px",
+                                                            minWidth: "40px", display: "inline-block"
                                                         }}
                                                     >
                                                         {SHIFT_TYPES[shift]?.label || "日"}
-                                                    </button>
+                                                    </div>
                                                 </td>
                                             ))}
                                         </tr>
@@ -1169,7 +1160,7 @@ export default function NurseShiftApp() {
                         <div style={{ marginTop: "1rem", textAlign: "right" }}>
                             <button
                                 style={{ ...styles.actionButton, ...styles.primaryButton }}
-                                onClick={() => setShowPrevMonthModal(false)}
+                                onClick={() => setShowReadPrevMonthModal(false)}
                             >
                                 閉じる
                             </button>
@@ -1177,6 +1168,7 @@ export default function NurseShiftApp() {
                     </div>
                 </div>
             )}
+
 
             {/* Staff Modal */}
             {showStaffModal && (
