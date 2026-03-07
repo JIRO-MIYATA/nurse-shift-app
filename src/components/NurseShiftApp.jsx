@@ -943,6 +943,19 @@ export default function NurseShiftApp() {
             <header style={styles.header}>
                 <div style={{ display: "flex", alignItems: "center", gap: "1rem" }}>
                     <h1 style={{ fontSize: "1.5rem", fontWeight: "bold", margin: 0 }}>看護師シフト管理 🏥</h1>
+                    <button
+                        onClick={() => setShowManualModal(true)}
+                        style={{
+                            ...styles.actionButton,
+                            backgroundColor: "#1E293B",
+                            border: "1px solid #334155",
+                            color: "#0EA5E9",
+                            fontSize: "0.85rem",
+                            padding: "0.4rem 0.8rem"
+                        }}
+                    >
+                        ❓ ヘルプ
+                    </button>
                     <div style={{ display: "flex", gap: "0.5rem" }}>
                         <button onClick={exportData} style={{ ...styles.persistButton, backgroundColor: "#0EA5E9" }}>
                             データ保存
@@ -968,7 +981,6 @@ export default function NurseShiftApp() {
                 </div>
 
                 <div>
-                    <button style={styles.actionButton} onClick={() => setShowManualModal(true)}>ヘルプ</button>
                     <button style={styles.actionButton} onClick={() => setShowConfigModal(true)}>勤務人数設定</button>
                     <button style={styles.actionButton} onClick={() => setShowStaffModal(true)}>スタッフ編集</button>
                     <button style={styles.actionButton} onClick={() => setShowRequestModal(true)}>
