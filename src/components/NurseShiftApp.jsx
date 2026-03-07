@@ -234,6 +234,7 @@ export default function NurseShiftApp() {
     const [showRequestModal, setShowRequestModal] = useState(false);
     const [showReadPrevMonthModal, setShowReadPrevMonthModal] = useState(false);
     const [showConfigModal, setShowConfigModal] = useState(false);
+    const [showManualModal, setShowManualModal] = useState(false);
     const [shiftConfig, setShiftConfig] = useState({
         dayWeek: 11,
         dayHol: 7,
@@ -967,6 +968,7 @@ export default function NurseShiftApp() {
                 </div>
 
                 <div>
+                    <button style={styles.actionButton} onClick={() => setShowManualModal(true)}>ヘルプ</button>
                     <button style={styles.actionButton} onClick={() => setShowConfigModal(true)}>勤務人数設定</button>
                     <button style={styles.actionButton} onClick={() => setShowStaffModal(true)}>スタッフ編集</button>
                     <button style={styles.actionButton} onClick={() => setShowRequestModal(true)}>
@@ -1482,6 +1484,74 @@ export default function NurseShiftApp() {
                                     </button>
                                 ))}
                             </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Manual Modal */}
+            {showManualModal && (
+                <div style={styles.modalOverlay} onClick={() => setShowManualModal(false)}>
+                    <div style={{ ...styles.modalContent, width: "800px" }} onClick={e => e.stopPropagation()}>
+                        <div style={{ borderBottom: "1px solid #334155", marginBottom: "1.5rem", paddingBottom: "0.5rem", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <h2 style={{ margin: 0 }}>ナースシフト管理アプリ 操作マニュアル</h2>
+                            <button onClick={() => setShowManualModal(false)} style={{ background: "none", border: "none", color: "#94A3B8", cursor: "pointer", fontSize: "1.5rem" }}>×</button>
+                        </div>
+
+                        <div style={{ display: "flex", flexDirection: "column", gap: "2rem", color: "#E2E8F0", lineHeight: "1.6" }}>
+                            <section>
+                                <h3 style={{ color: "#0EA5E9", borderLeft: "4px solid #0EA5E9", paddingLeft: "0.75rem" }}>1. 基本画面構成</h3>
+                                <ul style={{ paddingLeft: "1.25rem" }}>
+                                    <li><b>ヘッダー</b>: 年月選択、月移動、各種設定ボタンがあります。</li>
+                                    <li><b>凡例バー</b>: シフトの色分け、基準人数、前月連携状態が表示されます。</li>
+                                    <li><b>メイングリッド</b>: スタッフ別シフト表。セルをクリックして手動編集が可能です。</li>
+                                    <li><b>フッター合計</b>: 各日の勤務人数合計。不足・超過時は色で警告されます。</li>
+                                </ul>
+                            </section>
+
+                            <section>
+                                <h3 style={{ color: "#0EA5E9", borderLeft: "4px solid #0EA5E9", paddingLeft: "0.75rem" }}>2. 勤務人数の設定</h3>
+                                <p>「勤務人数設定」ボタンから、平日・休日の日勤人数や夜勤人数を変更できます。設定値は自動作成の目標値および警告の基準値となります。</p>
+                            </section>
+
+                            <section>
+                                <h3 style={{ color: "#0EA5E9", borderLeft: "4px solid #0EA5E9", paddingLeft: "0.75rem" }}>3. スタッフ・希望勤務の管理</h3>
+                                <ul style={{ paddingLeft: "1.25rem" }}>
+                                    <li><b>スタッフ編集</b>: リーダー、新人、W4、日曜休などの属性を設定します。</li>
+                                    <li><b>希望勤務</b>: 休みや日勤の希望を入力します。自動作成時に最優先されます。</li>
+                                </ul>
+                            </section>
+
+                            <section>
+                                <h3 style={{ color: "#0EA5E9", borderLeft: "4px solid #0EA5E9", paddingLeft: "0.75rem" }}>4. スケジュール作成と編集</h3>
+                                <ul style={{ paddingLeft: "1.25rem" }}>
+                                    <li><b>✨ 作成</b>: AIがルールに基づきシフトを自動生成します。</li>
+                                    <li><b>手動編集</b>: セルをクリックして、シフト変更や👑リーダー任命が可能です。</li>
+                                </ul>
+                            </section>
+
+                            <section>
+                                <h3 style={{ color: "#0EA5E9", borderLeft: "4px solid #0EA5E9", paddingLeft: "0.75rem" }}>5. 警告表示（バリデーション）</h3>
+                                <div style={{ display: "flex", flexDirection: "column", gap: "0.5rem", fontSize: "0.9rem" }}>
+                                    <div><span style={{ color: "#EF4444", fontWeight: "bold" }}>■ 赤色</span>: ルール違反（人数超過、連勤上限、夜勤回数など）</div>
+                                    <div><span style={{ color: "#F59E0B", fontWeight: "bold" }}>■ オレンジ色</span>: 注意（人数不足、新人の過密配置など）</div>
+                                    <div><span style={{ color: "#D946EF", fontWeight: "bold" }}>■ マゼンタ色</span>: 特殊警告（リーダー不在など）</div>
+                                </div>
+                            </section>
+
+                            <section>
+                                <h3 style={{ color: "#0EA5E9", borderLeft: "4px solid #0EA5E9", paddingLeft: "0.75rem" }}>6. データの保存と出力</h3>
+                                <p>「保存・読込」ボタンで進捗をファイルに残せます。また「CSV出力」によりExcel等で利用可能な形式で書き出せます。</p>
+                            </section>
+                        </div>
+
+                        <div style={{ marginTop: "2rem", textAlign: "right", borderTop: "1px solid #334155", paddingTop: "1rem" }}>
+                            <button
+                                style={{ ...styles.actionButton, ...styles.primaryButton }}
+                                onClick={() => setShowManualModal(false)}
+                            >
+                                閉じる
+                            </button>
                         </div>
                     </div>
                 </div>
