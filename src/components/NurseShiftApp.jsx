@@ -560,12 +560,40 @@ export default function NurseShiftApp() {
                 }
             });
 
+            // [PHASE 6] Auto-assign Leaders for each shift
+            const newLeaderFlags = new Set();
+            for (let dIdx = 0; dIdx < daysInMonth; dIdx++) {
+                ["DAY", "START", "DEEP"].forEach(shiftType => {
+                    const shiftStaff = staffData
+                        .map((_, sIdx) => sIdx)
+                        .filter(sIdx => newSched[sIdx][dIdx] === shiftType);
+
+                    if (shiftStaff.length > 0) {
+                        // Candidate sorting: isLeader first, then not rookie, then index
+                        const candidates = [...shiftStaff].sort((a, b) => {
+                            const leaderA = staffData[a].isLeader ? 1 : 0;
+                            const leaderB = staffData[b].isLeader ? 1 : 0;
+                            if (leaderA !== leaderB) return leaderB - leaderA;
+
+                            const rookieA = staffData[a].rookie ? 1 : 0;
+                            const rookieB = staffData[b].rookie ? 1 : 0;
+                            if (rookieA !== rookieB) return rookieA - rookieB;
+
+                            return a - b;
+                        });
+
+                        newLeaderFlags.add(`${candidates[0]}-${dIdx}`);
+                    }
+                });
+            }
+
             setSchedule(newSched);
+            setLeaderFlags(newLeaderFlags);
         } catch (err) {
             console.error("スケジュール生成エラー:", err);
             showError("スケジュールの生成中にエラーが発生しました: " + err.message);
         }
-    }, [staffData, requests, daysInMonth, year, month, prevMonthSchedule, daysArray, showError]);
+    }, [staffData, requests, daysInMonth, year, month, prevMonthSchedule, daysArray, showError, shiftConfig]);
 
     // ==========================================
     // Validation
