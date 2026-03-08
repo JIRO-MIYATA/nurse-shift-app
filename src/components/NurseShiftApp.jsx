@@ -8,8 +8,13 @@ const MIN_NIGHTS = 2;
 const EXTRA_OFF = 5;
 const MAX_CONSECUTIVE_WORK = 5;
 const PREV_MONTH_LOOKBACK = 10;
+// Maximum attempts to find a valid night shift assignment per day
+const MAX_NIGHT_ASSIGN_ATTEMPTS = 100;
 
-// Fixed Holidays (MM/DD)
+// Fixed national holidays (MM/DD format).
+// NOTE: This list covers common Japanese holidays for a typical year.
+// Substitute holidays and year-specific adjustments are NOT automatically handled.
+// Update annually as needed.
 const HOLIDAYS = [
     "01/01", "01/02", "01/03", "02/11", "02/23", "03/20", "03/21", "04/29",
     "05/03", "05/04", "05/05", "07/15", "07/21", "08/11", "09/15", "09/23",
@@ -221,7 +226,7 @@ const generateDefaultStaff = () => {
 
 export default function NurseShiftApp() {
     const [currentDate, setCurrentDate] = useState(new Date());
-    const [staffData, setStaffData] = useState(generateDefaultStaff());
+    const [staffData, setStaffData] = useState(() => generateDefaultStaff());
     const [schedule, setSchedule] = useState([]);
     // requests: { sIdx: { dIdx: "OFF"|"DAY" } }
     const [requests, setRequests] = useState({});
@@ -246,7 +251,7 @@ export default function NurseShiftApp() {
     // appError: { message, type } | null  (type: "error"|"success")
     const [appError, setAppError] = useState(null);
 
-    const showError = useCallback((message, type = "error") => {
+    const showToast = useCallback((message, type = "error") => {
         setAppError({ message, type });
         setTimeout(() => setAppError(null), 4000);
     }, []);
@@ -317,6 +322,8 @@ export default function NurseShiftApp() {
         setPrevMonthSchedule(nextPrevSchedule);
         setIsPrevMonthLinked(nextIsLinked);
         // eslint-disable-next-line react-hooks/exhaustive-deps
+        // Intentionally omitting staffData: adding it would trigger re-initialization
+        // on every staff edit. staffData changes are handled via monthlyCacheRef.
     }, [year, month]);
 
     // ==========================================
@@ -401,8 +408,10 @@ export default function NurseShiftApp() {
                 let validSelection = false;
                 let attempt = 0;
 
-                while (!validSelection && attempt < 100) {
+                while (!validSelection && attempt < MAX_NIGHT_ASSIGN_ATTEMPTS) {
                     attempt++;
+                    // Weighted random sort: lower night count = higher priority,
+                    // with ±1.25 random jitter (factor 2.5) to avoid deterministic bias
                     const pool = [...candidates].sort((a, b) => {
                         const weightA = currentNightCounts[a] + Math.random() * 2.5;
                         const weightB = currentNightCounts[b] + Math.random() * 2.5;
@@ -598,9 +607,9 @@ export default function NurseShiftApp() {
             setLeaderFlags(newLeaderFlags);
         } catch (err) {
             console.error("スケジュール生成エラー:", err);
-            showError("スケジュールの生成中にエラーが発生しました: " + err.message);
+            showToast("スケジュールの生成中にエラーが発生しました: " + err.message);
         }
-    }, [staffData, requests, daysInMonth, year, month, prevMonthSchedule, daysArray, showError, shiftConfig]);
+    }, [staffData, requests, daysInMonth, year, month, prevMonthSchedule, daysArray, showToast, shiftConfig]);
 
     // ==========================================
     // Validation
@@ -747,7 +756,7 @@ export default function NurseShiftApp() {
             link.download = `shift_${year}_${month}.csv`;
             link.click();
             URL.revokeObjectURL(link.href);
-            showError("CSVをエクスポートしました", "success");
+            showToast("CSVをエクスポートしました", "success");
         } catch (err) {
             console.error("CSVエクスポートエラー:", err);
             showError("CSVのエクスポートに失敗しました: " + err.message);
@@ -778,10 +787,10 @@ export default function NurseShiftApp() {
             a.href = URL.createObjectURL(blob);
             a.download = `nurse_shift_data_${year}_${month}.json`;
             a.click();
-            showError("データを保存しました", "success");
+            showToast("データを保存しました", "success");
         } catch (err) {
             console.error("データ保存エラー:", err);
-            showError("データの保存に失敗しました: " + err.message);
+            showToast("データの保存に失敗しました: " + err.message);
         }
     };
 
@@ -792,10 +801,10 @@ export default function NurseShiftApp() {
             a.href = URL.createObjectURL(blob);
             a.download = `nurse_staff_only_${year}_${month}.json`;
             a.click();
-            showError("スタッフデータを保存しました", "success");
+            showToast("スタッフデータを保存しました", "success");
         } catch (err) {
             console.error("スタッフ保存エラー:", err);
-            showError("スタッフデータの保存に失敗しました: " + err.message);
+            showToast("スタッフデータの保存に失敗しました: " + err.message);
         }
     };
 
@@ -809,12 +818,13 @@ export default function NurseShiftApp() {
                 if (!raw) throw new Error("ファイルの内容が読み取れませんでした");
                 const data = JSON.parse(raw);
                 if (!data || typeof data !== "object") throw new Error("JSONフォーマットが無効です");
-                if (data.staffData) setStaffData(data.staffData);
-                if (data.requests) setRequests(data.requests);
-                if (data.prevMonthSchedule) setPrevMonthSchedule(data.prevMonthSchedule);
-                if (data.schedule) setSchedule(data.schedule);
-                if (data.shiftConfig) setShiftConfig(data.shiftConfig);
-                if (data.leaderFlagsArr) setLeaderFlags(new Set(data.leaderFlagsArr));
+                // Validate each collection before applying
+                if (data.staffData && Array.isArray(data.staffData)) setStaffData(data.staffData);
+                if (data.requests && typeof data.requests === "object") setRequests(data.requests);
+                if (data.prevMonthSchedule && Array.isArray(data.prevMonthSchedule)) setPrevMonthSchedule(data.prevMonthSchedule);
+                if (data.schedule && Array.isArray(data.schedule)) setSchedule(data.schedule);
+                if (data.shiftConfig && typeof data.shiftConfig === "object") setShiftConfig(data.shiftConfig);
+                if (data.leaderFlagsArr && Array.isArray(data.leaderFlagsArr)) setLeaderFlags(new Set(data.leaderFlagsArr));
                 if (data.monthlyCache) {
                     // Restore leaderFlags as Set in each cached month
                     const restored = Object.fromEntries(
@@ -825,13 +835,13 @@ export default function NurseShiftApp() {
                     );
                     setMonthlyCache(restored);
                 }
-                showError("データを読み込みました", "success");
+                showToast("データを読み込みました", "success");
             } catch (err) {
                 console.error("データ読込エラー:", err);
-                showError("ファイルの読み込みに失敗しました: " + err.message);
+                showToast("ファイルの読み込みに失敗しました: " + err.message);
             }
         };
-        reader.onerror = () => showError("ファイルの読み取り中にエラーが発生しました");
+        reader.onerror = () => showToast("ファイルの読み取り中にエラーが発生しました");
         reader.readAsText(file);
         e.target.value = "";
     };
@@ -862,13 +872,13 @@ export default function NurseShiftApp() {
 
                 setSchedule(prev => resize(prev, Array(daysInMonth).fill("DAY")));
                 setPrevMonthSchedule(prev => resize(prev, Array(PREV_MONTH_LOOKBACK).fill("OFF")));
-                showError(`スタッフ条件を読み込みました (${newStaff.length}名)`, "success");
+                showToast(`スタッフ条件を読み込みました (${newStaff.length}名)`, "success");
             } catch (err) {
                 console.error("スタッフ読込エラー:", err);
-                showError("ファイルの読み込みに失敗しました: " + err.message);
+                showToast("ファイルの読み込みに失敗しました: " + err.message);
             }
         };
-        reader.onerror = () => showError("ファイルの読み取り中にエラーが発生しました");
+        reader.onerror = () => showToast("ファイルの読み取り中にエラーが発生しました");
         reader.readAsText(file);
         e.target.value = "";
     };
