@@ -560,8 +560,12 @@ export default function NurseShiftApp() {
                 }
             });
 
-            // [PHASE 6] Auto-assign Leaders for each shift
+            // [PHASE 6] Auto-assign Leaders for each shift (fair distribution)
             const newLeaderFlags = new Set();
+            // Track cumulative leader assignment count per staff across the month
+            const leaderCount = {};
+            staffData.forEach((_, sIdx) => { leaderCount[sIdx] = 0; });
+
             for (let dIdx = 0; dIdx < daysInMonth; dIdx++) {
                 ["DAY", "START", "DEEP"].forEach(shiftType => {
                     const shiftStaff = staffData
@@ -569,7 +573,7 @@ export default function NurseShiftApp() {
                         .filter(sIdx => newSched[sIdx][dIdx] === shiftType);
 
                     if (shiftStaff.length > 0) {
-                        // Candidate sorting: isLeader first, then not rookie, then index
+                        // Sort: isLeader first, then non-rookie, then fewest leader assignments
                         const candidates = [...shiftStaff].sort((a, b) => {
                             const leaderA = staffData[a].isLeader ? 1 : 0;
                             const leaderB = staffData[b].isLeader ? 1 : 0;
@@ -579,10 +583,13 @@ export default function NurseShiftApp() {
                             const rookieB = staffData[b].rookie ? 1 : 0;
                             if (rookieA !== rookieB) return rookieA - rookieB;
 
-                            return a - b;
+                            // Fewest leader assignments so far gets priority
+                            return leaderCount[a] - leaderCount[b];
                         });
 
-                        newLeaderFlags.add(`${candidates[0]}-${dIdx}`);
+                        const chosen = candidates[0];
+                        newLeaderFlags.add(`${chosen}-${dIdx}`);
+                        leaderCount[chosen]++;
                     }
                 });
             }
