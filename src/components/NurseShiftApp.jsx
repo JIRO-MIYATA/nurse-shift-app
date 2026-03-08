@@ -662,9 +662,17 @@ export default function NurseShiftApp() {
                 }
             }
 
-            // Consecutive work validation
+            // Consecutive work validation (including carry-over from previous month)
             staffData.forEach((s, sIdx) => {
                 let consecutive = 0;
+                // Seed from previous month tail (same logic as generateSchedule)
+                const prev = prevMonthSchedule[sIdx];
+                if (prev) {
+                    for (let i = prev.length - 1; i >= 0; i--) {
+                        if (prev[i] === "OFF") break;
+                        consecutive++;
+                    }
+                }
                 for (let d = 0; d < daysInMonth; d++) {
                     if (schedule[sIdx]?.[d] === "OFF") {
                         consecutive = 0;
@@ -683,7 +691,7 @@ export default function NurseShiftApp() {
             console.error("バリデーションエラー:", err);
             return empty;
         }
-    }, [schedule, daysInMonth, staffData, requests, year, month, leaderFlags]);
+    }, [schedule, daysInMonth, staffData, requests, year, month, leaderFlags, prevMonthSchedule, shiftConfig]);
 
     // ==========================================
     // Month Navigation
@@ -738,6 +746,7 @@ export default function NurseShiftApp() {
             link.href = URL.createObjectURL(blob);
             link.download = `shift_${year}_${month}.csv`;
             link.click();
+            URL.revokeObjectURL(link.href);
             showError("CSVをエクスポートしました", "success");
         } catch (err) {
             console.error("CSVエクスポートエラー:", err);
@@ -889,7 +898,18 @@ export default function NurseShiftApp() {
     const removeStaff = (index) => {
         setStaffData(prev => prev.filter((_, i) => i !== index));
         setSchedule(prev => prev.filter((_, i) => i !== index));
-        setLeaderFlags(new Set());
+        // Remove only flags for the deleted staff, then re-index remaining staff flags
+        setLeaderFlags(prev => {
+            const next = new Set();
+            prev.forEach(key => {
+                const [sIdxStr, dIdxStr] = key.split("-");
+                const sIdx = parseInt(sIdxStr);
+                if (sIdx === index) return; // remove
+                const newSIdx = sIdx > index ? sIdx - 1 : sIdx;
+                next.add(`${newSIdx}-${dIdxStr}`);
+            });
+            return next;
+        });
     };
 
     const toggleLeader = (sIdx, dIdx) => {
