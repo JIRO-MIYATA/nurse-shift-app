@@ -191,7 +191,7 @@ const checkIsHoliday = (year, month, day) => {
     const date = new Date(year, month - 1, day);
     const dayOfWeek = date.getDay();
     const formatted = `${String(month).padStart(2, "0")}/${String(day).padStart(2, "0")}`;
-    if (dayOfWeek === 0) return true;
+    if (dayOfWeek === 0 || dayOfWeek === 6) return true;
     if (HOLIDAYS.includes(formatted)) return true;
     return false;
 };
@@ -243,7 +243,8 @@ export default function NurseShiftApp() {
     const [shiftConfig, setShiftConfig] = useState({
         dayWeek: 11,
         dayHol: 7,
-        night: 4
+        night: 4,
+        minOff: 8
     });
     // monthlyCache: "YYYY-MM" -> { requests, prevMonthSchedule, leaderFlagsArr, schedule }
     const [monthlyCache, setMonthlyCache] = useState({});
@@ -507,14 +508,10 @@ export default function NurseShiftApp() {
                 if (dayStaff.length > maxDay) {
                     const toRemoveCount = dayStaff.length - maxDay;
 
-                    // Removable = soft-locked DAY cells only
+                    // Removable = soft-locked DAY cells only (random order, no equalization)
                     const candidates = dayStaff
                         .filter(sIdx => isSoftLocked(sIdx, dIdx) || !isLocked(sIdx, dIdx))
-                        .sort((a, b) => {
-                            const countA = newSched[a].filter(s => s !== "OFF").length + Math.random();
-                            const countB = newSched[b].filter(s => s !== "OFF").length + Math.random();
-                            return countB - countA;
-                        });
+                        .sort(() => Math.random() - 0.5);
 
                     let removed = 0;
                     for (const targetIdx of candidates) {
@@ -569,7 +566,28 @@ export default function NurseShiftApp() {
                 }
             });
 
-            // [PHASE 6] Auto-assign Leaders for each shift (fair distribution)
+            // [PHASE 6] Minimum Off Days Enforcement
+            if (shiftConfig.minOff > 0) {
+                staffData.forEach((s, sIdx) => {
+                    const currentOff = newSched[sIdx].filter(sh => sh === "OFF").length;
+                    const needed = shiftConfig.minOff - currentOff;
+                    if (needed <= 0) return;
+
+                    // Collect unlocked DAY shifts and shuffle randomly
+                    const dayDays = [];
+                    for (let d = 0; d < daysInMonth; d++) {
+                        if (newSched[sIdx][d] === "DAY" && !isHardLocked(sIdx, d)) {
+                            dayDays.push(d);
+                        }
+                    }
+                    dayDays.sort(() => Math.random() - 0.5);
+                    for (let i = 0; i < Math.min(needed, dayDays.length); i++) {
+                        softLock(sIdx, dayDays[i], "OFF");
+                    }
+                });
+            }
+
+            // [PHASE 7] Auto-assign Leaders for each shift (fair distribution)
             const newLeaderFlags = new Set();
             // Track cumulative leader assignment count per staff across the month
             const leaderCount = {};
@@ -645,7 +663,9 @@ export default function NurseShiftApp() {
                     const reqType = requests[sIdx]?.[d];
                     if (reqType) {
                         const failed = (reqType === "OFF" && shift !== "OFF") ||
-                            (reqType === "DAY" && shift !== "DAY");
+                            (reqType === "DAY" && shift !== "DAY") ||
+                            (reqType === "START" && shift !== "START") ||
+                            (reqType === "DEEP" && shift !== "DEEP");
                         if (failed) {
                             v.requestFailures[`${sIdx}-${d}`] = true;
                             v.cellWarnings[`${sIdx}-${d}`] = true;
@@ -734,7 +754,8 @@ export default function NurseShiftApp() {
                 const attr = [s.w4 && "W4", s.rookie && "Beginner", s.sunOff && "SunOff"].filter(Boolean).join(" ");
                 const counts = { DAY: 0, START: 0, DEEP: 0, OFF: 0 };
                 const shifts = (schedule[sIdx] || []).map((sh, dIdx) => {
-                    let label = SHIFT_TYPES[sh]?.label || "";
+                    const CSV_LABELS = { DAY: "・", START: "▲", DEEP: "●", OFF: "休" };
+                    let label = CSV_LABELS[sh] ?? "";
                     if (leaderFlags.has(`${sIdx}-${dIdx}`)) label += "(L)";
                     if (counts[sh] !== undefined) counts[sh]++;
                     return label;
@@ -961,7 +982,7 @@ export default function NurseShiftApp() {
                 {shift?.label}
                 {reqType && (
                     <span style={{ position: "absolute", top: 0, right: 0, fontSize: "0.6rem", zIndex: 6 }}>
-                        {reqType === "DAY" ? "日" : "休"}
+                        {reqType === "DAY" ? "日" : reqType === "START" ? "準" : reqType === "DEEP" ? "深" : "休"}
                     </span>
                 )}
             </div>
@@ -1287,6 +1308,17 @@ export default function NurseShiftApp() {
                                     style={{ width: "100%", padding: "0.5rem", background: "#334155", color: "white", border: "none", borderRadius: "4px" }}
                                 />
                             </div>
+                            <div>
+                                <label style={{ display: "block", marginBottom: "0.5rem", color: "#94A3B8" }}>スタッフ1人あたりの最低休日数</label>
+                                <input
+                                    type="number"
+                                    min={0}
+                                    value={shiftConfig.minOff}
+                                    onChange={e => setShiftConfig(prev => ({ ...prev, minOff: parseInt(e.target.value) || 0 }))}
+                                    style={{ width: "100%", padding: "0.5rem", background: "#334155", color: "white", border: "none", borderRadius: "4px" }}
+                                />
+                                <p style={{ fontSize: "0.75rem", color: "#64748B", marginTop: "0.25rem" }}>夜勤明け休を除いた休日の最低保証数（0で無制限）</p>
+                            </div>
                         </div>
                         <div style={{ marginTop: "2rem", textAlign: "right" }}>
                             <button
@@ -1351,7 +1383,7 @@ export default function NurseShiftApp() {
                                                 style={{ background: "#334155", color: "white", border: "none", width: "100%" }}
                                             >
                                                 <option value="auto">自動</option>
-                                                {[1, 2, 3, 4, 5, 6].map(n => <option key={n} value={n}>{n}</option>)}
+                                                {[0, 1, 2, 3, 4, 5, 6, 7, 8, 9].map(n => <option key={n} value={n}>{n}</option>)}
                                             </select>
                                         </td>
                                         <td style={{ padding: "0.5rem", textAlign: "center" }}>
@@ -1405,7 +1437,7 @@ export default function NurseShiftApp() {
                             {editCell && editCell.dIdx === -1 ? (
                                 <>
                                     <h3>{staffData[editCell.sIdx].name} の希望勤務</h3>
-                                    <p style={{ fontSize: "0.8rem", color: "#94A3B8" }}>クリックで切替: 未設定 → 休み → 日勤 → 未設定</p>
+                                    <p style={{ fontSize: "0.8rem", color: "#94A3B8" }}>クリックで切替: 未設定 → 休み → 日勤 → 準夜 → 深夜 → 未設定</p>
                                     <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: "5px" }}>
                                         {["日", "月", "火", "水", "木", "金", "土"].map(d => (
                                             <div key={d} style={{ textAlign: "center", color: "#94A3B8" }}>{d}</div>
@@ -1415,20 +1447,32 @@ export default function NurseShiftApp() {
                                         ))}
                                         {daysArray.map((d, i) => {
                                             const reqType = requests[editCell.sIdx]?.[i];
+                                            const reqColor =
+                                                reqType === "OFF" ? "#64748B" :
+                                                reqType === "DAY" ? "#3B82F6" :
+                                                reqType === "START" ? "#F97316" :
+                                                reqType === "DEEP" ? "#A855F7" : "#334155";
+                                            const reqLabel =
+                                                reqType === "OFF" ? "休" :
+                                                reqType === "DAY" ? "日" :
+                                                reqType === "START" ? "準" :
+                                                reqType === "DEEP" ? "深" : null;
                                             return (
                                                 <button
                                                     key={d}
                                                     onClick={() => {
                                                         const current = requests[editCell.sIdx] || {};
                                                         const newReqs = { ...current };
-                                                        if (!reqType) newReqs[i] = "OFF";
-                                                        else if (reqType === "OFF") newReqs[i] = "DAY";
-                                                        else delete newReqs[i];
+                                                        const cycle = [undefined, "OFF", "DAY", "START", "DEEP"];
+                                                        const idx = cycle.indexOf(reqType);
+                                                        const next = cycle[(idx + 1) % cycle.length];
+                                                        if (next === undefined) delete newReqs[i];
+                                                        else newReqs[i] = next;
                                                         setRequests({ ...requests, [editCell.sIdx]: newReqs });
                                                     }}
                                                     style={{
                                                         padding: "0.5rem",
-                                                        backgroundColor: reqType === "OFF" ? "#F97316" : reqType === "DAY" ? "#3B82F6" : "#334155",
+                                                        backgroundColor: reqColor,
                                                         color: "#fff",
                                                         border: "none",
                                                         borderRadius: "4px",
@@ -1437,7 +1481,7 @@ export default function NurseShiftApp() {
                                                     }}
                                                 >
                                                     {d}
-                                                    {reqType && <span style={{ fontSize: "0.6rem", display: "block" }}>{reqType === "DAY" ? "日" : "休"}</span>}
+                                                    {reqLabel && <span style={{ fontSize: "0.6rem", display: "block" }}>{reqLabel}</span>}
                                                 </button>
                                             );
                                         })}
@@ -1541,8 +1585,10 @@ export default function NurseShiftApp() {
                             <div style={{ display: "flex", gap: "0.5rem" }}>
                                 {[
                                     { label: "なし", type: null, bg: "#334155" },
-                                    { label: "休み", type: "OFF", bg: "#F97316" },
+                                    { label: "休み", type: "OFF", bg: "#64748B" },
                                     { label: "日勤", type: "DAY", bg: "#3B82F6" },
+                                    { label: "準夜", type: "START", bg: "#F97316" },
+                                    { label: "深夜", type: "DEEP", bg: "#A855F7" },
                                 ].map(({ label, type, bg }) => (
                                     <button
                                         key={label}
