@@ -367,8 +367,18 @@ export default function NurseShiftApp() {
             staffData.forEach((s, sIdx) => {
                 // Shift requests
                 if (requests[sIdx]) {
-                    Object.entries(requests[sIdx]).forEach(([d, type]) => {
-                        hardLock(sIdx, parseInt(d), type);
+                    Object.entries(requests[sIdx]).forEach(([dStr, type]) => {
+                        const d = parseInt(dStr);
+                        hardLock(sIdx, d, type);
+                        // Auto-complete night pattern if START is requested
+                        if (type === "START") {
+                            if (d + 1 < daysInMonth && !isHardLocked(sIdx, d + 1)) {
+                                hardLock(sIdx, d + 1, "DEEP");
+                            }
+                            if (d + 2 < daysInMonth && !isHardLocked(sIdx, d + 2)) {
+                                hardLock(sIdx, d + 2, "OFF");
+                            }
+                        }
                     });
                 }
                 // Sunday off
@@ -426,6 +436,7 @@ export default function NurseShiftApp() {
                     };
 
                     for (const t of ["A", "B", "C"]) {
+                        if (currentSelection.length >= shiftConfig.night) break;
                         const idx = pool.findIndex(pid => staffData[pid].team === t);
                         if (idx !== -1) pick(idx);
                     }
@@ -498,7 +509,39 @@ export default function NurseShiftApp() {
                 }
             });
 
-            // [PHASE 4] Consecutive Work Limit
+            // [PHASE 4] Day Limit Enforcement (Gentle)
+            for (let dIdx = 0; dIdx < daysInMonth; dIdx++) {
+                const isHoli = checkIsHoliday(year, month, dIdx + 1);
+                const maxDay = isHoli ? shiftConfig.dayHol : shiftConfig.dayWeek;
+
+                const dayStaff = staffData.map((_, sIdx) => sIdx).filter(sIdx => newSched[sIdx][dIdx] === "DAY");
+
+                if (dayStaff.length > maxDay) {
+                    const toRemoveCount = dayStaff.length - maxDay;
+                    // Only remove those who aren't hard-locked (preserve requests/patterns)
+                    const removable = dayStaff
+                        .filter(sIdx => !isHardLocked(sIdx, dIdx))
+                        .sort(() => Math.random() - 0.5);
+
+                    let removed = 0;
+                    for (const targetIdx of removable) {
+                        if (removed >= toRemoveCount) break;
+
+                        // Keep at least 1 leader on day shift
+                        if (staffData[targetIdx].isLeader) {
+                            const remainingLeaders = dayStaff.filter(
+                                sIdx => sIdx !== targetIdx && newSched[sIdx][dIdx] === "DAY" && staffData[sIdx].isLeader
+                            ).length;
+                            if (remainingLeaders < 1) continue;
+                        }
+
+                        softLock(targetIdx, dIdx, "OFF");
+                        removed++;
+                    }
+                }
+            }
+
+            // [PHASE 5] Consecutive Work Limit
             staffData.forEach((s, sIdx) => {
                 let consecutive = 0;
 
@@ -533,7 +576,7 @@ export default function NurseShiftApp() {
                 }
             });
 
-            // [PHASE 5] Minimum Off Days Enforcement
+            // [PHASE 6] Minimum Off Days Enforcement
             if (shiftConfig.minOff > 0) {
                 staffData.forEach((s, sIdx) => {
                     const currentOff = newSched[sIdx].filter(sh => sh === "OFF").length;
@@ -554,7 +597,7 @@ export default function NurseShiftApp() {
                 });
             }
 
-            // [PHASE 6] Auto-assign Leaders for each shift (fair distribution)
+            // [PHASE 7] Auto-assign Leaders for each shift (fair distribution)
             const newLeaderFlags = new Set();
             // Track cumulative leader assignment count per staff across the month
             const leaderCount = {};
