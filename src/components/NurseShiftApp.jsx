@@ -498,40 +498,7 @@ export default function NurseShiftApp() {
                 }
             });
 
-            // [PHASE 4] Day Limit Enforcement
-            for (let dIdx = 0; dIdx < daysInMonth; dIdx++) {
-                const isHoli = checkIsHoliday(year, month, dIdx + 1);
-                const maxDay = isHoli ? shiftConfig.dayHol : shiftConfig.dayWeek;
-
-                const dayStaff = staffData.map((_, sIdx) => sIdx).filter(sIdx => newSched[sIdx][dIdx] === "DAY");
-
-                if (dayStaff.length > maxDay) {
-                    const toRemoveCount = dayStaff.length - maxDay;
-
-                    // Removable = soft-locked DAY cells only (random order, no equalization)
-                    const candidates = dayStaff
-                        .filter(sIdx => isSoftLocked(sIdx, dIdx) || !isLocked(sIdx, dIdx))
-                        .sort(() => Math.random() - 0.5);
-
-                    let removed = 0;
-                    for (const targetIdx of candidates) {
-                        if (removed >= toRemoveCount) break;
-
-                        // Leader constraint: keep at least 1 leader on day shift
-                        if (staffData[targetIdx].isLeader) {
-                            const remainingLeaders = dayStaff.filter(
-                                sIdx => sIdx !== targetIdx && newSched[sIdx][dIdx] === "DAY" && staffData[sIdx].isLeader
-                            ).length;
-                            if (remainingLeaders < 1) continue;
-                        }
-
-                        softLock(targetIdx, dIdx, "OFF");
-                        removed++;
-                    }
-                }
-            }
-
-            // [PHASE 5] Consecutive Work Limit
+            // [PHASE 4] Consecutive Work Limit
             staffData.forEach((s, sIdx) => {
                 let consecutive = 0;
 
@@ -566,7 +533,7 @@ export default function NurseShiftApp() {
                 }
             });
 
-            // [PHASE 6] Minimum Off Days Enforcement
+            // [PHASE 5] Minimum Off Days Enforcement
             if (shiftConfig.minOff > 0) {
                 staffData.forEach((s, sIdx) => {
                     const currentOff = newSched[sIdx].filter(sh => sh === "OFF").length;
@@ -587,7 +554,7 @@ export default function NurseShiftApp() {
                 });
             }
 
-            // [PHASE 7] Auto-assign Leaders for each shift (fair distribution)
+            // [PHASE 6] Auto-assign Leaders for each shift (fair distribution)
             const newLeaderFlags = new Set();
             // Track cumulative leader assignment count per staff across the month
             const leaderCount = {};
