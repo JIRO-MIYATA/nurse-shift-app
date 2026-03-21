@@ -370,14 +370,10 @@ export default function NurseShiftApp() {
                     Object.entries(requests[sIdx]).forEach(([dStr, type]) => {
                         const d = parseInt(dStr);
                         hardLock(sIdx, d, type);
-                        // Auto-complete night pattern if START is requested
+                        // [ABSOLUTE] Auto-complete and FORCE night pattern if START is requested
                         if (type === "START") {
-                            if (d + 1 < daysInMonth && !isHardLocked(sIdx, d + 1)) {
-                                hardLock(sIdx, d + 1, "DEEP");
-                            }
-                            if (d + 2 < daysInMonth && !isHardLocked(sIdx, d + 2)) {
-                                hardLock(sIdx, d + 2, "OFF");
-                            }
+                            if (d + 1 < daysInMonth) hardLock(sIdx, d + 1, "DEEP");
+                            if (d + 2 < daysInMonth) hardLock(sIdx, d + 2, "OFF");
                         }
                     });
                 }
@@ -643,44 +639,87 @@ export default function NurseShiftApp() {
                 });
             }
 
-            // [PHASE 8] Final Force Adjustment (Ensure counts match configuration exactly)
+            // [PHASE 8] Final Ultimate Force Adjustment (Guaranteed configuration match)
+            // Step A: Fix Night Shift Counts (START)
             for (let dIdx = 0; dIdx < daysInMonth; dIdx++) {
-                // Fix Night Shifts
-                const currentNight = staffData.map((_, sIdx) => sIdx).filter(sIdx => newSched[sIdx][dIdx] === "START").length;
-                let neededNight = shiftConfig.night - currentNight;
-                if (neededNight > 0) {
-                    const pool = staffData.map((_, sIdx) => sIdx)
-                        .filter(sIdx => newSched[sIdx][dIdx] === "DAY" && !isHardLocked(sIdx, dIdx))
+                const currentNight = staffData.filter((_, sIdx) => newSched[sIdx][dIdx] === "START").length;
+                let diff = shiftConfig.night - currentNight;
+
+                if (diff > 0) {
+                    // Need more Semi-Night
+                    const pool = staffData.map((_, i) => i)
+                        .filter(sIdx => 
+                            newSched[sIdx][dIdx] === "DAY" && 
+                            !isHardLocked(sIdx, dIdx) &&
+                            (dIdx + 1 >= daysInMonth || !isHardLocked(sIdx, dIdx + 1)) &&
+                            (dIdx + 2 >= daysInMonth || !isHardLocked(sIdx, dIdx + 2))
+                        ).sort(() => Math.random() - 0.5);
+                    
+                    for (let i = 0; i < Math.min(diff, pool.length); i++) {
+                        const sIdx = pool[i];
+                        softLock(sIdx, dIdx, "START");
+                        if (dIdx + 1 < daysInMonth) softLock(sIdx, dIdx + 1, "DEEP");
+                        if (dIdx + 2 < daysInMonth) softLock(sIdx, dIdx + 2, "OFF");
+                    }
+                } else if (diff < 0) {
+                    // Too many: remove
+                    const pool = staffData.map((_, i) => i)
+                        .filter(sIdx => newSched[sIdx][dIdx] === "START" && !isHardLocked(sIdx, dIdx))
                         .sort(() => Math.random() - 0.5);
-                    for (let i = 0; i < Math.min(neededNight, pool.length); i++) {
-                        softLock(pool[i], dIdx, "START");
-                        if (dIdx + 1 < daysInMonth) softLock(pool[i], dIdx + 1, "DEEP");
-                        if (dIdx + 2 < daysInMonth) softLock(pool[i], dIdx + 2, "OFF");
+                    for (let i = 0; i < Math.min(Math.abs(diff), pool.length); i++) {
+                        const sIdx = pool[i];
+                        softLock(sIdx, dIdx, "DAY");
+                        // If we remove START, we should ideally revert its pattern but carefully
+                        if (dIdx + 1 < daysInMonth && newSched[sIdx][dIdx + 1] === "DEEP" && !isHardLocked(sIdx, dIdx + 1)) {
+                            softLock(sIdx, dIdx + 1, "DAY");
+                        }
                     }
                 }
+            }
 
-                // Fix Day Shifts
+            // Step B: Sanitize Night Patterns (START -> DEEP -> OFF) for EVERYONE
+            staffData.forEach((_, sIdx) => {
+                for (let d = 0; d < daysInMonth; d++) {
+                    if (newSched[sIdx][d] === "START") {
+                        if (d + 1 < daysInMonth) {
+                            if (newSched[sIdx][d+1] !== "DEEP") softLock(sIdx, d + 1, "DEEP");
+                        }
+                        if (d + 2 < daysInMonth) {
+                            if (newSched[sIdx][d+2] !== "OFF") softLock(sIdx, d + 2, "OFF");
+                        }
+                    } else if (newSched[sIdx][d] === "DEEP") {
+                        // DEEP must follow START. If no START on d-1, this is an orphan DEEP (could happen if carry-over? check)
+                        if (d === 0) {
+                             // This is fixed by carry-over logic in Phase 0, so should be safe
+                        } else if (newSched[sIdx][d-1] !== "START") {
+                             softLock(sIdx, d, "DAY"); // Revert if no parent
+                        }
+                    }
+                }
+            });
+
+            // Step C: Fix Day Shift Counts (DAY)
+            for (let dIdx = 0; dIdx < daysInMonth; dIdx++) {
                 const isHoli = checkIsHoliday(year, month, dIdx + 1);
                 const maxDay = isHoli ? shiftConfig.dayHol : shiftConfig.dayWeek;
-                const currentDay = staffData.map((_, sIdx) => sIdx).filter(sIdx => newSched[sIdx][dIdx] === "DAY").length;
-                
-                if (currentDay > maxDay) {
-                    // Too many: reduce
-                    const toRemove = currentDay - maxDay;
-                    const pool = staffData.map((_, sIdx) => sIdx)
-                        .filter(sIdx => newSched[sIdx][dIdx] === "DAY" && !isHardLocked(sIdx, dIdx))
-                        .sort(() => Math.random() - 0.5);
-                    for (let i = 0; i < Math.min(toRemove, pool.length); i++) {
-                        softLock(pool[i], dIdx, "OFF");
-                    }
-                } else if (currentDay < maxDay) {
-                    // Too few: add (from OFF, if not hard-locked)
-                    const toAdd = maxDay - currentDay;
-                    const pool = staffData.map((_, sIdx) => sIdx)
+                const currentDay = staffData.filter((_, sIdx) => newSched[sIdx][dIdx] === "DAY").length;
+                let diff = maxDay - currentDay;
+
+                if (diff > 0) {
+                    // Need more: from OFF (not hard-locked)
+                    const pool = staffData.map((_, i) => i)
                         .filter(sIdx => newSched[sIdx][dIdx] === "OFF" && !isHardLocked(sIdx, dIdx))
                         .sort(() => Math.random() - 0.5);
-                    for (let i = 0; i < Math.min(toAdd, pool.length); i++) {
+                    for (let i = 0; i < Math.min(diff, pool.length); i++) {
                         softLock(pool[i], dIdx, "DAY");
+                    }
+                } else if (diff < 0) {
+                    // Too many: to OFF (not hard-locked)
+                    const pool = staffData.map((_, i) => i)
+                        .filter(sIdx => newSched[sIdx][dIdx] === "DAY" && !isHardLocked(sIdx, dIdx))
+                        .sort(() => Math.random() - 0.5);
+                    for (let i = 0; i < Math.min(Math.abs(diff), pool.length); i++) {
+                        softLock(pool[i], dIdx, "OFF");
                     }
                 }
             }
